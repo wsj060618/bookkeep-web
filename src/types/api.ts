@@ -38,8 +38,8 @@ export interface User {
   currentBookId: number | null
 }
 
-/** 账本类型：后端的 CategoryTemplate 只认这两种，写死成字面量联合类型 */
-export type BookType = 'personal' | 'merchant'
+/** 账本类型：项目只有班级账本，固定 'class'（后端 book.type 同值） */
+export type BookType = 'class'
 
 /** 账本。current 由后端算好（是不是 user.current_book_id），前端不用自己比 */
 export interface Book {
