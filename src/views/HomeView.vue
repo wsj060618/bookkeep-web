@@ -78,6 +78,12 @@ async function loadList(): Promise<void> {
     const resp = await pageTransactions(query)
     list.value = resp.list
     total.value = resp.total
+
+    // 条数变大或删数据后页码可能越界：回到最后一页再拉一次，避免停在空白页
+    if (list.value.length === 0 && total.value > 0 && page.value > 1) {
+      page.value = Math.max(1, Math.ceil(total.value / size.value))
+      await loadList()
+    }
   } catch {
     // 401 已由拦截器跳登录页，其余错误已弹提示
   } finally {
@@ -129,6 +135,12 @@ function onTypeChange(): void {
 
 function onPageChange(value: number): void {
   page.value = value
+  void loadList()
+}
+
+/** 换每页条数必须回第 1 页：停在原来的页码上多半会越界 */
+function onSizeChange(): void {
+  page.value = 1
   void loadList()
 }
 
@@ -382,11 +394,14 @@ onMounted(async () => {
 
     <footer class="pager">
       <el-pagination
-        :current-page="page"
-        :page-size="size"
+        v-model:current-page="page"
+        v-model:page-size="size"
+        :page-sizes="[10, 20, 50, 100]"
         :total="total"
-        layout="prev, pager, next"
-        :hide-on-single-page="true"
+        layout="total, sizes, prev, pager, next, jumper"
+        size="small"
+        background
+        @size-change="onSizeChange"
         @current-change="onPageChange"
       />
     </footer>
@@ -694,6 +709,11 @@ onMounted(async () => {
 
   .filter-date {
     width: 100%;
+  }
+
+  /* 窄屏放不下「总数 + 条数 + 页码 + 跳页」：先藏跳页，保留总数与条数选择 */
+  .pager :deep(.el-pagination__jump) {
+    display: none;
   }
 }
 </style>
