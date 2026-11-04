@@ -46,6 +46,8 @@ export interface Book {
   id: number
   name: string
   type: BookType
+  /** 公示页链接 /report/{shareToken} 的唯一来源（PLAN §5.9），别自己拼 id */
+  shareToken: string
   current: boolean
 }
 
@@ -57,4 +59,65 @@ export interface LoginResp {
   token: string
   user: User
   books: Book[]
+}
+
+/** 收支方向。后端用 String 存，只有这两个值 */
+export type TxType = 'income' | 'expense'
+
+/** 分类。icon / color 是语义 key，由前端映射成图标组件与颜色（后端不管长什么样） */
+export interface Category {
+  id: number
+  name: string
+  type: TxType
+  icon: string | null
+  color: string | null
+  sortOrder: number
+}
+
+/** 新增 / 修改分类的请求体，对应后端 CategoryReq */
+export interface CategoryReq {
+  name: string
+  type: TxType
+  icon?: string | null
+  color?: string | null
+}
+
+/**
+ * 流水。列表直接带 categoryName/Icon/Color，前端不做二次查询（PLAN §5.0 第 5 条）。
+ * amount 是**字符串**（后端 BigDecimal 全局按字符串序列化）：不要 parseFloat 后累加，
+ * 要算就交给后端，或者至少用整数分。
+ */
+export interface Transaction {
+  id: number
+  type: TxType
+  amount: string
+  /** yyyy-MM-dd */
+  transDate: string
+  note: string | null
+  categoryId: number
+  categoryName: string
+  categoryIcon: string | null
+  categoryColor: string | null
+}
+
+/** 新增 / 修改流水的请求体，对应后端 TransactionReq */
+export interface TransactionReq {
+  categoryId: number
+  type: TxType
+  /** 字符串传也行（如 '12.50'），后端按 BigDecimal 解析 */
+  amount: string
+  /** yyyy-MM-dd */
+  transDate: string
+  note?: string | null
+}
+
+/** 流水列表查询条件，字段名与后端 TransactionQuery 逐字一致（page 从 1 开始） */
+export interface TransactionQuery {
+  page?: number
+  size?: number
+  type?: TxType
+  categoryId?: number
+  startDate?: string
+  endDate?: string
+  keyword?: string
 }
