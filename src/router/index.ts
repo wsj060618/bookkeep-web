@@ -21,6 +21,11 @@ const router = createRouter({
       component: () => import('../views/LoginView.vue'),
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('../views/RegisterView.vue'),
+    },
+    {
       path: '/',
       name: 'home',
       component: () => import('../views/HomeView.vue'),
@@ -47,7 +52,8 @@ router.beforeEach((to) => {
   if (to.meta.requiresAuth && !hasToken) {
     return { name: 'login' }
   }
-  if (to.name === 'login' && hasToken) {
+  // 已登录就不该再看到登录/注册页
+  if ((to.name === 'login' || to.name === 'register') && hasToken) {
     return { name: 'home' }
   }
   return true

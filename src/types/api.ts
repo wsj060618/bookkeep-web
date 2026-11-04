@@ -52,6 +52,23 @@ export interface Book {
 }
 
 /**
+ * 注册请求体，对应后端 RegisterReq。没有 bookType——项目只有班级账本一种，
+ * 注册成功即建账本 + 预置 13 条分类（后端事务内完成）。
+ */
+export interface RegisterReq {
+  /** 4–20 位字母/数字/下划线，区分大小写（Tom 和 tom 是两个账号） */
+  username: string
+  /** 6–32 位明文，后端 BCrypt 加密后落库 */
+  password: string
+  /** 可空，后端默认取用户名 */
+  nickname?: string | null
+  /** 可空，仅展示用（不发验证邮件，也不能靠它找回密码） */
+  email?: string | null
+  /** 可空，后端默认「班级账本」 */
+  bookName?: string | null
+}
+
+/**
  * 登录响应。
  * 注意 books 和 user 是**平级**的（后端 PLAN §5.1 特意这么定），不是 user.books。
  */

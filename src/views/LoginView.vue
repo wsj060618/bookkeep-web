@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 
@@ -11,13 +11,15 @@ import { useAuthStore } from '../stores/auth'
  */
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 
 const form = reactive({
-  username: '',
+  // 注册页「用户名已存在」时会带 query 跳过来，省得再输一遍
+  username: String(route.query.username ?? ''),
   password: '',
 })
 
@@ -98,7 +100,9 @@ async function onSubmit(): Promise<void> {
       </el-form>
 
       <p class="login-hint">
-        还没有账号？先用后端仓库的 <code>http/auth.http</code> 注册一个（注册页随 P2 一起做）。
+        还没有账号？
+        <router-link :to="{ name: 'register' }">注册一个</router-link>
+        （注册后自动建好班级账本）
       </p>
     </el-card>
   </div>
@@ -145,5 +149,10 @@ async function onSubmit(): Promise<void> {
   background: var(--el-fill-color-light);
   padding: 1px 4px;
   border-radius: 3px;
+}
+
+.login-hint a {
+  color: var(--el-color-primary);
+  text-decoration: none;
 }
 </style>
