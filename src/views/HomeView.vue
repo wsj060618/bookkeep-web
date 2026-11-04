@@ -50,10 +50,11 @@ const filterCategories = computed(() =>
 )
 
 /** 分享链接只认登录响应里的 shareToken（PLAN §5.9），不要用 book.id 拼 */
-const shareLink = computed(() => {
-  const book = auth.books.find((b) => b.current) ?? auth.books[0]
-  return book ? `${window.location.origin}/report/${book.shareToken}` : ''
-})
+const currentBook = computed(() => auth.books.find((b) => b.current) ?? auth.books[0] ?? null)
+
+const shareLink = computed(() =>
+  currentBook.value ? `${window.location.origin}/report/${currentBook.value.shareToken}` : '',
+)
 
 const topCategories = computed(() => categoryStats.value.slice(0, 5))
 
@@ -209,7 +210,7 @@ onMounted(async () => {
   <div class="page">
     <header class="topbar">
       <div class="brand">
-        <span class="brand-name">班级账本</span>
+        <span class="brand-name">{{ currentBook?.name || '班级账本' }}</span>
         <span class="brand-user">{{ auth.user?.nickname || auth.user?.username }}</span>
       </div>
       <div class="topbar-actions">
