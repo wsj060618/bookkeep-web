@@ -46,5 +46,11 @@ export const useAuthStore = defineStore('auth', () => {
     clearToken()
   }
 
-  return { token, user, books, isLoggedIn, login, loadMe, logout }
+  /** 改名等操作返回新的 Book 后同步内存 + localStorage，避免与后端不一致 */
+  function applyBook(book: Book): void {
+    books.value = books.value.map((b) => (b.id === book.id ? { ...b, ...book } : b))
+    setStoredBooks(books.value)
+  }
+
+  return { token, user, books, isLoggedIn, login, loadMe, logout, applyBook }
 })

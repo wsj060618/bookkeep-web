@@ -51,6 +51,12 @@ export interface Book {
   current: boolean
 }
 
+/** 账本改名请求体，对应后端 BookUpdateReq（只提供重命名，PLAN §5.2） */
+export interface BookUpdateReq {
+  /** ≤50 字，不能全空格 */
+  name: string
+}
+
 /**
  * 注册请求体，对应后端 RegisterReq。没有 bookType——项目只有班级账本一种，
  * 注册成功即建账本 + 预置 13 条分类（后端事务内完成）。
