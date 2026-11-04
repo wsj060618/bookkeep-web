@@ -52,5 +52,11 @@ export const useAuthStore = defineStore('auth', () => {
     setStoredBooks(books.value)
   }
 
-  return { token, user, books, isLoggedIn, login, loadMe, logout, applyBook }
+  /** 整体替换（GET /api/books、切换当前账本都返回完整列表） */
+  function setBooks(list: Book[]): void {
+    books.value = list
+    setStoredBooks(list)
+  }
+
+  return { token, user, books, isLoggedIn, login, loadMe, logout, applyBook, setBooks }
 })

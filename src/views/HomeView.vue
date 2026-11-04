@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { listCategories } from '../api/category'
 import { deleteTransaction, exportTransactions, pageTransactions } from '../api/transaction'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
-import { renameBook } from '../api/book'
+import { listBooks, switchBook } from '../api/book'
 import { saveBlob } from '../api/request'
 import type { Category, CategoryStat, Summary, Transaction, TransactionQuery, TxType } from '../types/api'
 import { useAuthStore } from '../stores/auth'
 import TransactionFormDialog from '../components/TransactionFormDialog.vue'
+import BookManageDialog from '../components/BookManageDialog.vue'
 import { colorOf, iconOf } from '../utils/category'
 
 /**
@@ -43,17 +44,7 @@ const editing = ref<Transaction | null>(null)
 
 const shareVisible = ref(false)
 
-const renameVisible = ref(false)
-const renaming = ref(false)
-const renameFormRef = ref<FormInstance>()
-const renameForm = reactive({ name: '' })
-
-const renameRules: FormRules = {
-  name: [
-    { required: true, message: '给账本起个名字', trigger: 'blur' },
-    { max: 50, message: '账本名不能超过 50 个字', trigger: 'blur' },
-  ],
-}
+const manageVisible = ref(false)
 
 const categories = ref<Category[]>([])
 
@@ -175,29 +166,29 @@ function openCreate(): void {
   dialogVisible.value = true
 }
 
-function openRename(): void {
-  renameForm.name = currentBook.value?.name ?? ''
-  renameVisible.value = true
-}
-
-async function submitRename(): Promise<void> {
-  if (!currentBook.value || !renameFormRef.value) return
-  const valid = await renameFormRef.value.validate().catch(() => false)
-  if (!valid) return
-
-  if (renaming.value) return
-  renaming.value = true
+/** 顶栏账本下拉：直接切换某一本，或打开管理弹窗 */
+async function onBookCommand(command: string): Promise<void> {
+  if (command === 'manage') {
+    manageVisible.value = true
+    return
+  }
+  const id = Number(command)
+  if (!id || id === currentBook.value?.id) return
   try {
-    const book = await renameBook(currentBook.value.id, { name: renameForm.name.trim() })
-    // 内存与 localStorage 一起更新：shareToken 可能被后端回写，别只改显示
-    auth.applyBook(book)
-    ElMessage.success('账本名已更新')
-    renameVisible.value = false
+    auth.setBooks(await switchBook(id))
+    ElMessage.success(`已切换到「${currentBook.value?.name ?? ''}」`)
+    await onBooksChanged()
   } catch {
     // 提示已由拦截器弹出
-  } finally {
-    renaming.value = false
   }
+}
+
+/** 当前账本变了（切换/新建/删除）：分类也必须重拉，两本账本的分类 id 完全不同 */
+async function onBooksChanged(): Promise<void> {
+  filterCategoryId.value = null
+  page.value = 1
+  categories.value = await listCategories().catch(() => [])
+  await refresh()
 }
 
 function openEdit(tx: Transaction): void {
@@ -239,6 +230,8 @@ onMounted(async () => {
     await router.replace({ name: 'login' })
     return
   }
+  // books 以服务端为准：localStorage 可能是旧数据（在别的设备上改过名或删过账本）
+  auth.setBooks(await listBooks().catch(() => auth.books))
   categories.value = await listCategories().catch(() => [])
   await refresh()
 })
@@ -248,8 +241,22 @@ onMounted(async () => {
   <div class="page">
     <header class="topbar">
       <div class="brand">
-        <span class="brand-name">{{ currentBook?.name || '班级账本' }}</span>
-        <el-button v-if="currentBook" text size="small" @click="openRename">改名</el-button>
+        <el-dropdown trigger="click" @command="onBookCommand">
+          <span class="brand-name brand-switch">{{ currentBook?.name || '班级账本' }} ▾</span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="book in auth.books"
+                :key="book.id"
+                :command="String(book.id)"
+                :disabled="book.current"
+              >
+                {{ book.name }}<span v-if="book.current">（当前）</span>
+              </el-dropdown-item>
+              <el-dropdown-item divided command="manage">管理账本…</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <span class="brand-user">{{ auth.user?.nickname || auth.user?.username }}</span>
       </div>
       <div class="topbar-actions">
@@ -393,6 +400,8 @@ onMounted(async () => {
       @saved="refresh"
     />
 
+    <BookManageDialog v-model="manageVisible" @changed="onBooksChanged" />
+
     <el-dialog v-model="shareVisible" title="分享给同学看" width="min(480px, 92vw)">
       <p class="share-tip">
         任何人打开这个链接都能看到本月收支，<strong>不需要登录</strong>，页面上没有你的用户名和邮箱。
@@ -403,31 +412,6 @@ onMounted(async () => {
         </template>
       </el-input>
       <p class="share-tip">链接里的 token 就是账本的公示凭证，转发前确认对象。</p>
-    </el-dialog>
-
-    <el-dialog v-model="renameVisible" title="给账本改名" width="min(420px, 92vw)" destroy-on-close>
-      <el-form
-        ref="renameFormRef"
-        :model="renameForm"
-        :rules="renameRules"
-        label-position="top"
-        @submit.prevent="submitRename"
-      >
-        <el-form-item label="账本名" prop="name">
-          <el-input
-            v-model="renameForm.name"
-            maxlength="50"
-            show-word-limit
-            placeholder="比如：计科2301班费"
-            @keyup.enter="submitRename"
-          />
-        </el-form-item>
-      </el-form>
-      <p class="share-tip">改名只影响标题与公示页显示，分享链接（token）不会变。</p>
-      <template #footer>
-        <el-button @click="renameVisible = false">取消</el-button>
-        <el-button type="primary" :loading="renaming" @click="submitRename">保存</el-button>
-      </template>
     </el-dialog>
   </div>
 </template>
@@ -455,6 +439,10 @@ onMounted(async () => {
 .brand-name {
   font-size: 18px;
   font-weight: 600;
+}
+
+.brand-switch {
+  cursor: pointer;
 }
 
 .brand-user {

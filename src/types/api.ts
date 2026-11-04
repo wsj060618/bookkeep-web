@@ -51,10 +51,20 @@ export interface Book {
   current: boolean
 }
 
-/** 账本改名请求体，对应后端 BookUpdateReq（只提供重命名，PLAN §5.2） */
+/** 账本改名 / 新建的请求体，对应后端 BookUpdateReq（都只有 name 一个字段） */
 export interface BookUpdateReq {
   /** ≤50 字，不能全空格 */
   name: string
+}
+
+/** 回收站里的账本，对应后端 BookTrashResp */
+export interface BookTrash {
+  id: number
+  name: string
+  /** yyyy-MM-dd HH:mm:ss */
+  deletedAt: string
+  /** 彻底删除时刻 = deletedAt + 15 天 */
+  expireAt: string
 }
 
 /**
