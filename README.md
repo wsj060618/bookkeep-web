@@ -2,16 +2,15 @@
 
 记账本前端。Vue 3 + TypeScript + Vite + Element Plus + Pinia + vue-router + axios。
 
-当前进度：**第 0 步**——只有登录页和一个「验证 token 通不通」的首页。
-按 `D:\coding\bookkeep-server\PLAN.md` §6.1 的节奏，页面随后端模块一起长出来：
+当前进度：**W1 + W2 页面已就绪**——登录页、首页（月度统计 + 流水列表 + 记一笔 + 导出）、只读公示页。
+按 `D:\coding\bookkeep-server\PLAN.md` §6.1 的节奏，页面随后端模块长出来：
 
 | 阶段 | 后端 | 前端 |
 |---|---|---|
-| 第 0 步 | P1 认证（已完成） | 登录页 ← 现在在这 |
-| 1 | P2 分类 + 流水 | 流水列表 + 记一笔 |
-| 2 | P3 统计 | 统计图表 |
-| 3 | P4 账本 + 预算 | 账本切换 + 预算页 |
-| 4 | P5 AI 分析 | 分析页 |
+| 第 0 步 | P1 认证（已完成） | 登录页（已完成） |
+| W1 | P2 分类 + 流水 | 流水列表 + 记一笔（已完成） |
+| W2 | P3 统计 + 导出 + 公示页 | 统计卡片 + 导出按钮 + 公示页（已完成） |
+| W3 | 单机打包 | 生产构建（`dist` 交给 Nginx） |
 
 ## 启动
 
@@ -41,6 +40,18 @@ npm run preview      # 预览 dist 产物
 5. 浏览器 DevTools → Application → Local Storage 删掉 `bookkeep_token`，再刷新 → 回到登录页
 6. 手动把 `bookkeep_token` 改成乱码再刷新 → 后端 401 → 提示后回到登录页（`/me` 返回真实 HTTP 401）
 7. Network 面板确认：登录只发**一次** `/api/auth/login`；连点登录按钮不会发第二次（按钮单飞）
+
+## W1 + W2 验收（后端在跑的前提下，5 分钟）
+
+1. 登录后首页显示「本月收入 / 本月支出 / 本月结余 / 累计结余」，空账本是 `0.00` 而不是空白
+2. 点右下角「记一笔」→ 选分类、填金额、保存 → 列表出现新行，累计结余跟着变
+3. **连点保存** → 只成功一笔（按钮单飞，Network 里只有一次 POST）
+4. 记一笔超过结余的支出 → 弹出后端 `code=400` 的提示（不是「请求失败（HTTP 500）」）
+5. F5 刷新 → 列表、统计、结余都还在
+6. 切类型/分类/日期/关键字筛选 → 列表跟着变，分页回到第 1 页
+7. 点「导出全部」→ 下载的是 `.csv`，Excel 打开中文不乱码、金额两位小数；把日期区间选反 → 弹提示且**不下载**
+8. 点「分享」复制链接 → 无痕窗口打开 `/report/{token}`（不带 token 也能看）→ 有收入/支出/累计结余与逐行结余
+9. 无痕窗口把链接里的 token 改一个字符 → 显示「公示页不存在或已失效」，不会回落到别人的账本
 
 ## 一个请求是怎么走的
 
@@ -73,7 +84,7 @@ TS = JS + **类型标注**。类型只在写代码/编译时存在，`npm run bu
 | 类型标注 | `const submitting = ref(false)` / `function login(username: string, password: string): Promise<LoginResp>` | 冒号后面是类型；`Promise<T>` 表示异步返回 `T` |
 | interface | `src/types/api.ts` 的 `User` / `LoginResp` | 描述对象有哪些字段、什么类型，对应后端 DTO |
 | 泛型 | `ApiResult<T>`、`get<T>(url)` | `T` 是占位符：`get<User>('/auth/me')` 得到的类型就是 `User` |
-| 联合类型 | `string \| null`（`User.nickname`）、`'personal' \| 'merchant'`（`BookType`） | 「要么是 A 要么是 B」；只有 `'personal'`/`'merchant'` 两个合法值 |
+| 联合类型 | `string \| null`（`User.nickname`）、`'income' \| 'expense'`（`TxType`） | 「要么是 A 要么是 B」；`TxType` 只有两个合法值 |
 | 类型收窄 | `HomeView.vue` 里 `v-if="auth.user"` | 判断过后 TS 才知道 `auth.user` 不是 null，才能 `.nickname` |
 | `!` 断言 | `formRef.value!`（本仓库没用，改用 `if (!formRef.value) return`） | 「我保证不是 null」，滥用会掩盖 bug，优先用 if 判断 |
 | `?` 可选 | `error.response?.status` | 可能不存在，不存在就返回 `undefined`，而不是抛异常 |

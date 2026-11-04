@@ -1,5 +1,5 @@
 import type { PageResult, Transaction, TransactionQuery, TransactionReq } from '../types/api'
-import { del, get, post, put } from './request'
+import { del, get, getFile, post, put, type DownloadFile } from './request'
 
 /** 流水接口，对应后端 TransactionController。按当前账本，不传 bookId */
 
@@ -26,4 +26,12 @@ export function updateTransaction(id: number, req: TransactionReq): Promise<Tran
 /** DELETE /api/transactions/{id} */
 export function deleteTransaction(id: number): Promise<void> {
   return del<void>(`/transactions/${id}`)
+}
+
+/**
+ * GET /api/transactions/export —— 成功是 CSV 文件流，失败仍是 200 + JSON 信封。
+ * 调用方拿到的是 {blob, filename}，用 request.ts 的 saveBlob 落盘。
+ */
+export function exportTransactions(params: { startDate?: string; endDate?: string }): Promise<DownloadFile> {
+  return getFile('/transactions/export', { ...params })
 }

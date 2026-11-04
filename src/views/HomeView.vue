@@ -3,15 +3,17 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listCategories } from '../api/category'
-import { deleteTransaction, fetchBalance, pageTransactions } from '../api/transaction'
-import type { Category, Transaction, TransactionQuery, TxType } from '../types/api'
+import { deleteTransaction, exportTransactions, pageTransactions } from '../api/transaction'
+import { fetchCategoryStat, fetchSummary } from '../api/statistic'
+import { saveBlob } from '../api/request'
+import type { Category, CategoryStat, Summary, Transaction, TransactionQuery, TxType } from '../types/api'
 import { useAuthStore } from '../stores/auth'
 import TransactionFormDialog from '../components/TransactionFormDialog.vue'
 import { colorOf, iconOf } from '../utils/category'
 
 /**
- * 首页 = 流水列表 + 记一笔。
- * 验收标准是可观察行为：连点只发一次请求、刷新后数据还在、空数据显示 0.00。
+ * 首页 = 月度统计 + 流水列表 + 记一笔 + 导出/分享入口。
+ * 验收标准是可观察行为：连点只发一次请求、刷新后数据还在、空数据显示 0.00、导出的是 CSV 不是 JSON。
  */
 
 const router = useRouter()
@@ -22,8 +24,13 @@ const list = ref<Transaction[]>([])
 const total = ref(0)
 const page = ref(1)
 const size = ref(10)
-const balance = ref('0.00')
-const categories = ref<Category[]>([])
+
+const statLoading = ref(false)
+/** 空字符串 = 当月，由后端按 Asia/Shanghai 决定；回显后用后端返回的 month */
+const statMonth = ref('')
+const summary = ref<Summary | null>(null)
+const categoryStats = ref<CategoryStat[]>([])
+const exporting = ref(false)
 
 const filterType = ref<TxType | ''>('')
 const filterCategoryId = ref<number | null>(null)
@@ -33,10 +40,22 @@ const keyword = ref('')
 const dialogVisible = ref(false)
 const editing = ref<Transaction | null>(null)
 
+const shareVisible = ref(false)
+
+const categories = ref<Category[]>([])
+
 /** 筛选区只列当前收支方向下的分类，选完收入再切支出时旧分类会被清掉 */
 const filterCategories = computed(() =>
   filterType.value ? categories.value.filter((c) => c.type === filterType.value) : categories.value,
 )
+
+/** 分享链接只认登录响应里的 shareToken（PLAN §5.9），不要用 book.id 拼 */
+const shareLink = computed(() => {
+  const book = auth.books.find((b) => b.current) ?? auth.books[0]
+  return book ? `${window.location.origin}/report/${book.shareToken}` : ''
+})
+
+const topCategories = computed(() => categoryStats.value.slice(0, 5))
 
 async function loadList(): Promise<void> {
   loading.value = true
@@ -61,16 +80,24 @@ async function loadList(): Promise<void> {
   }
 }
 
-async function loadBalance(): Promise<void> {
+async function loadStats(): Promise<void> {
+  statLoading.value = true
   try {
-    balance.value = await fetchBalance()
+    const month = statMonth.value || undefined
+    const [resp, stats] = await Promise.all([fetchSummary(month), fetchCategoryStat(month, 'expense')])
+    summary.value = resp
+    categoryStats.value = stats
+    statMonth.value = resp.month
   } catch {
-    balance.value = '0.00'
+    summary.value = null
+    categoryStats.value = []
+  } finally {
+    statLoading.value = false
   }
 }
 
 async function refresh(): Promise<void> {
-  await Promise.all([loadList(), loadBalance()])
+  await Promise.all([loadList(), loadStats()])
 }
 
 function onSearch(): void {
@@ -98,6 +125,35 @@ function onTypeChange(): void {
 function onPageChange(value: number): void {
   page.value = value
   void loadList()
+}
+
+async function onExport(): Promise<void> {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    // 有日期筛选就导这一段，没有就整本；区间由后端解释（含首尾）
+    const params = dateRange.value
+      ? { startDate: dateRange.value[0], endDate: dateRange.value[1] }
+      : {}
+    const file = await exportTransactions(params)
+    saveBlob(file.blob, file.filename)
+    ElMessage.success('已开始下载')
+  } catch {
+    // 参数错误（如区间颠倒）时后端回的是 JSON 信封，request.ts 已经弹过提示
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function copyShareLink(): Promise<void> {
+  if (!shareLink.value) return
+  try {
+    await navigator.clipboard.writeText(shareLink.value)
+    ElMessage.success('链接已复制')
+  } catch {
+    // 局域网 http 下 clipboard API 不可用（非安全上下文），只能提示手动复制
+    ElMessage.warning('复制失败，请手动选中链接复制')
+  }
 }
 
 function openCreate(): void {
@@ -156,13 +212,61 @@ onMounted(async () => {
         <span class="brand-name">班级账本</span>
         <span class="brand-user">{{ auth.user?.nickname || auth.user?.username }}</span>
       </div>
-      <el-button text type="primary" @click="onLogout">退出</el-button>
+      <div class="topbar-actions">
+        <el-button text type="primary" :disabled="!shareLink" @click="shareVisible = true">分享</el-button>
+        <el-button text type="primary" @click="onLogout">退出</el-button>
+      </div>
     </header>
 
-    <section class="balance-card">
-      <span class="balance-label">当前结余</span>
-      <span class="balance-value" :class="{ negative: balance.startsWith('-') }">￥{{ balance }}</span>
-      <span class="balance-hint">累计收入 − 累计支出</span>
+    <section v-loading="statLoading" class="stats">
+      <div class="stats-head">
+        <span class="stats-title">收支统计</span>
+        <el-date-picker
+          v-model="statMonth"
+          class="stats-month"
+          type="month"
+          value-format="YYYY-MM"
+          placeholder="选择月份"
+          :clearable="false"
+          @change="loadStats"
+        />
+      </div>
+
+      <div class="stats-numbers">
+        <div class="stat">
+          <span class="stat-label">本月收入</span>
+          <span class="stat-value income">+￥{{ summary?.income ?? '0.00' }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">本月支出</span>
+          <span class="stat-value expense">-￥{{ summary?.expense ?? '0.00' }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">本月结余</span>
+          <span class="stat-value">￥{{ summary?.balance ?? '0.00' }}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">累计结余</span>
+          <span class="stat-value strong">￥{{ summary?.totalBalance ?? '0.00' }}</span>
+        </div>
+      </div>
+
+      <div v-if="topCategories.length" class="category-stats">
+        <div v-for="c in topCategories" :key="c.categoryId" class="category-row">
+          <span class="category-name">
+            {{ iconOf(c.categoryIcon) }} {{ c.categoryName }}
+          </span>
+          <span class="category-bar">
+            <span
+              class="category-bar-inner"
+              :style="{ width: `${c.percent}%`, background: colorOf(c.categoryColor) }"
+            />
+          </span>
+          <span class="category-amount">￥{{ c.amount }}</span>
+          <span class="category-percent">{{ c.percent }}%</span>
+        </div>
+      </div>
+      <p v-else class="stats-empty">本月还没有支出，分类占比暂时为空</p>
     </section>
 
     <section class="filters">
@@ -196,6 +300,9 @@ onMounted(async () => {
         @clear="onSearch"
       />
       <el-button class="filter-reset" @click="onReset">重置</el-button>
+      <el-button type="primary" plain :loading="exporting" @click="onExport">
+        {{ dateRange ? '导出所选区间' : '导出全部' }}
+      </el-button>
     </section>
 
     <section v-loading="loading" class="tx-list">
@@ -245,6 +352,18 @@ onMounted(async () => {
       :editing="editing"
       @saved="refresh"
     />
+
+    <el-dialog v-model="shareVisible" title="分享给同学看" width="min(480px, 92vw)">
+      <p class="share-tip">
+        任何人打开这个链接都能看到本月收支，<strong>不需要登录</strong>，页面上没有你的用户名和邮箱。
+      </p>
+      <el-input :model-value="shareLink" readonly>
+        <template #append>
+          <el-button @click="copyShareLink">复制</el-button>
+        </template>
+      </el-input>
+      <p class="share-tip">链接里的 token 就是账本的公示凭证，转发前确认对象。</p>
+    </el-dialog>
   </div>
 </template>
 
@@ -278,33 +397,112 @@ onMounted(async () => {
   color: var(--el-text-color-secondary);
 }
 
-.balance-card {
+.topbar-actions {
+  display: flex;
+}
+
+.stats {
   display: grid;
-  gap: 4px;
+  gap: 12px;
   padding: 16px;
   border-radius: 12px;
   background: linear-gradient(135deg, #3b82f6, #6366f1);
   color: #fff;
 }
 
-.balance-label {
-  font-size: 12px;
-  opacity: 0.85;
+.stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.balance-value {
-  font-size: 26px;
-  font-weight: 700;
+.stats-title {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.stats-month {
+  width: 130px;
+}
+
+.stats-numbers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.stat {
+  display: grid;
+  gap: 2px;
+}
+
+.stat-label {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.stat-value {
+  font-size: 12px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.balance-value.negative {
+.stat-value.strong {
+  font-size: 16px;
+}
+
+.stat-value.income {
+  color: #bbf7d0;
+}
+
+.stat-value.expense {
   color: #fecaca;
 }
 
-.balance-hint {
-  font-size: 11px;
-  opacity: 0.75;
+.category-stats {
+  display: grid;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 20%);
+}
+
+.category-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 78px 52px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.category-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 25%);
+  overflow: hidden;
+}
+
+.category-bar-inner {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.category-amount,
+.category-percent {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-empty {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .filters {
@@ -418,7 +616,22 @@ onMounted(async () => {
   box-shadow: 0 6px 16px rgb(59 130 246 / 40%);
 }
 
+.share-tip {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+}
+
 @media (max-width: 520px) {
+  .stats-numbers {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .category-row {
+    grid-template-columns: 80px 1fr 70px 46px;
+  }
+
   .filter-type,
   .filter-category,
   .filter-keyword {

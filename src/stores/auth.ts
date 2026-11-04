@@ -1,8 +1,8 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { fetchMe, login as loginApi } from '../api/auth'
-import type { LoginResp, User } from '../types/api'
-import { clearToken, getToken, setToken } from '../utils/token'
+import type { Book, LoginResp, User } from '../types/api'
+import { clearToken, getStoredBooks, getToken, setStoredBooks, setToken } from '../utils/token'
 
 /**
  * 登录状态。
@@ -16,6 +16,8 @@ import { clearToken, getToken, setToken } from '../utils/token'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(getToken())
   const user = ref<User | null>(null)
+  // /me 不返回 books，所以 books 靠登录响应 + localStorage（分享链接需要 shareToken）
+  const books = ref<Book[]>(getStoredBooks() ?? [])
 
   const isLoggedIn = computed(() => token.value !== null)
 
@@ -25,6 +27,8 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = resp.token
     setToken(resp.token)
     user.value = resp.user
+    books.value = resp.books
+    setStoredBooks(resp.books)
     return resp
   }
 
@@ -38,8 +42,9 @@ export const useAuthStore = defineStore('auth', () => {
   function logout(): void {
     token.value = null
     user.value = null
+    books.value = []
     clearToken()
   }
 
-  return { token, user, isLoggedIn, login, loadMe, logout }
+  return { token, user, books, isLoggedIn, login, loadMe, logout }
 })

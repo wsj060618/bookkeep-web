@@ -121,3 +121,51 @@ export interface TransactionQuery {
   endDate?: string
   keyword?: string
 }
+
+/** 月度统计，对应后端 SummaryResp。month 是后端回显的实际统计月份（不传时是当月） */
+export interface Summary {
+  /** yyyy-MM */
+  month: string
+  income: string
+  expense: string
+  /** 本月收支差，不是累计余额 */
+  balance: string
+  /** 全账本累计余额 */
+  totalBalance: string
+}
+
+/** 分类占比。percent 是两位小数字符串，各项相加可能不等于 100.00，只做展示 */
+export interface CategoryStat {
+  categoryId: number
+  categoryName: string
+  categoryIcon: string | null
+  categoryColor: string | null
+  amount: string
+  percent: string
+}
+
+/** 公示页的流水行：比普通列表多一个 balanceAfter（全账本范围内的逐行结余），且没有 id */
+export interface ReportTransaction {
+  transDate: string
+  type: TxType
+  amount: string
+  note: string | null
+  categoryName: string
+  categoryIcon: string | null
+  categoryColor: string | null
+  balanceAfter: string
+}
+
+/** 免登录公示页 GET /api/public/report/{shareToken}，不含任何个人信息 */
+export interface PublicReport {
+  bookName: string
+  /** yyyy-MM */
+  month: string
+  income: string
+  expense: string
+  balance: string
+  totalBalance: string
+  categories: CategoryStat[]
+  /** 按日期升序，逐行结余从上往下读 */
+  transactions: ReportTransaction[]
+}

@@ -96,3 +96,99 @@ export async function del<T>(url: string): Promise<T> {
   const response = await http.delete<ApiResult<T>>(url)
   return response.data.data
 }
+
+// ---------- 文件下载 ----------
+// 导出成功时返回 text/csv（不是 JSON 信封），而失败仍是 200 + JSON，
+// 所以不能复用上面的实例——那里按 body.code 判断，blob 上根本没有 code。
+
+const httpFile: AxiosInstance = axios.create({
+  baseURL: '/api',
+  timeout: 30_000,
+  responseType: 'blob',
+})
+
+httpFile.interceptors.request.use((config) => {
+  const token = getToken()
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+httpFile.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError<Blob>) => {
+    void handleFileError(error)
+    return Promise.reject(error)
+  },
+)
+
+async function handleFileError(error: AxiosError<Blob>): Promise<void> {
+  const status = error.response?.status
+  const message = await blobMessage(error.response?.data)
+  if (status === 401) {
+    toLogin(message || '未登录或登录状态已失效')
+    return
+  }
+  ElMessage.error(message || (status ? `下载失败（HTTP ${status}）` : '网络异常，请检查后端是否已启动'))
+}
+
+/** 下载失败时后端返回的是 JSON，但 responseType=blob 拿到的是 Blob，得读出来才知道 message */
+async function blobMessage(data: unknown): Promise<string | undefined> {
+  if (!(data instanceof Blob)) {
+    return (data as ApiResult<unknown> | undefined)?.message
+  }
+  try {
+    const body = JSON.parse(await data.text()) as ApiResult<unknown>
+    return body.message
+  } catch {
+    return undefined
+  }
+}
+
+export interface DownloadFile {
+  blob: Blob
+  filename: string
+}
+
+export async function getFile(url: string, params?: Record<string, unknown>): Promise<DownloadFile> {
+  const response = await httpFile.get<Blob>(url, { params })
+  const contentType = String(response.headers['content-type'] ?? '')
+
+  // 参数错误（如日期区间颠倒）是 HTTP 200 + JSON 信封：这里不分支就会把 JSON 存成 .csv
+  if (contentType.includes('application/json')) {
+    const body = JSON.parse(await response.data.text()) as ApiResult<unknown>
+    if (body.code === 401) {
+      toLogin(body.message || '登录状态已失效，请重新登录')
+    } else {
+      ElMessage.error(body.message || '导出失败')
+    }
+    throw new Error(body.message || '导出失败')
+  }
+
+  return {
+    blob: response.data,
+    filename: filenameOf(response.headers['content-disposition'], '导出.csv'),
+  }
+}
+
+/** 后端用 ContentDisposition attachment，中文名是 filename*=UTF-8''... 形式 */
+function filenameOf(disposition: string | undefined, fallback: string): string {
+  if (!disposition) return fallback
+  const extended = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  if (extended) return decodeURIComponent(extended[1])
+  const plain = /filename="?([^";]+)"?/i.exec(disposition)
+  return plain ? plain[1] : fallback
+}
+
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  // 立即释放会让部分浏览器取消下载，等一拍再回收
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}

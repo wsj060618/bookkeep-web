@@ -26,6 +26,12 @@ const router = createRouter({
       component: () => import('../views/HomeView.vue'),
       meta: { requiresAuth: true },
     },
+    // 只读公示页：免登录（后端 /api/public/report/** 是唯一匿名放行的接口）
+    {
+      path: '/report/:token',
+      name: 'public-report',
+      component: () => import('../views/PublicReportView.vue'),
+    },
     // 兜底：访问不存在的路径回首页（首页未登录会被下面的守卫送去登录页）
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
