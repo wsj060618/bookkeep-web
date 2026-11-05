@@ -1,4 +1,4 @@
-import type { Book, BookTrash, BookUpdateReq } from '../types/api'
+import type { Book, BookTrash, BookUpdateReq, ShareLink } from '../types/api'
 import { del, get, post, put } from './request'
 
 /** 账本接口，对应后端 BookController（增删改查 + 回收站，PLAN §5.2） */
@@ -36,4 +36,9 @@ export function listTrash(): Promise<BookTrash[]> {
 /** PUT /api/books/{id}/restore —— 从回收站恢复（不自动切为当前） */
 export function restoreBook(id: number): Promise<Book> {
   return put<Book>(`/books/${id}/restore`)
+}
+
+/** POST /api/books/{id}/share —— 每次调用都换新 token（3 天有效），旧链接立即失效 */
+export function createShareLink(id: number): Promise<ShareLink> {
+  return post<ShareLink>(`/books/${id}/share`)
 }

@@ -46,9 +46,18 @@ export interface Book {
   id: number
   name: string
   type: BookType
-  /** 公示页链接 /report/{shareToken} 的唯一来源（PLAN §5.9），别自己拼 id */
-  shareToken: string
+  /** 当前公示链接的 token；从未分享过为 null。链接 3 天有效，点「分享」会重新生成 */
+  shareToken: string | null
+  /** 链接到期时间（yyyy-MM-dd HH:mm:ss）；null 或已过期表示没有可用链接 */
+  shareTokenExpiresAt: string | null
   current: boolean
+}
+
+/** POST /api/books/{id}/share 的响应：只给 token 与到期时间，URL 由前端用 origin 拼 */
+export interface ShareLink {
+  token: string
+  /** yyyy-MM-dd HH:mm:ss，分享时刻 + 3 天 */
+  expiresAt: string
 }
 
 /** 账本改名 / 新建的请求体，对应后端 BookUpdateReq（都只有 name 一个字段） */

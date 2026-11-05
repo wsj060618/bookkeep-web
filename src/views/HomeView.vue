@@ -5,7 +5,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { listCategories } from '../api/category'
 import { deleteTransaction, exportTransactions, pageTransactions } from '../api/transaction'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
-import { listBooks, switchBook } from '../api/book'
+import { createShareLink, listBooks, switchBook } from '../api/book'
 import { saveBlob } from '../api/request'
 import type { Category, CategoryStat, Summary, Transaction, TransactionQuery, TxType } from '../types/api'
 import { useAuthStore } from '../stores/auth'
@@ -43,6 +43,7 @@ const dialogVisible = ref(false)
 const editing = ref<Transaction | null>(null)
 
 const shareVisible = ref(false)
+const shareLoading = ref(false)
 
 const manageVisible = ref(false)
 
@@ -53,12 +54,12 @@ const filterCategories = computed(() =>
   filterType.value ? categories.value.filter((c) => c.type === filterType.value) : categories.value,
 )
 
-/** 分享链接只认登录响应里的 shareToken（PLAN §5.9），不要用 book.id 拼 */
+/** 当前账本：分享链接挂在账本上，不是在用户上 */
 const currentBook = computed(() => auth.books.find((b) => b.current) ?? auth.books[0] ?? null)
 
-const shareLink = computed(() =>
-  currentBook.value ? `${window.location.origin}/report/${currentBook.value.shareToken}` : '',
-)
+/** 弹窗里的链接：每次点「分享」都向后端要一条新的（3 天有效），不做本地缓存 */
+const shareLink = ref('')
+const shareExpiresAt = ref('')
 
 const topCategories = computed(() => categoryStats.value.slice(0, 5))
 
@@ -173,6 +174,25 @@ async function copyShareLink(): Promise<void> {
   }
 }
 
+/** 点「分享」→ 重新生成一条 3 天有效的新链接，旧链接同时作废 */
+async function openShare(): Promise<void> {
+  const book = currentBook.value
+  if (!book || shareLoading.value) return
+  shareLoading.value = true
+  try {
+    const link = await createShareLink(book.id)
+    shareLink.value = `${window.location.origin}/report/${link.token}`
+    shareExpiresAt.value = link.expiresAt
+    // 同步到 store/localStorage：换账本回来时不会拿着上一个 token
+    auth.applyBook({ ...book, shareToken: link.token, shareTokenExpiresAt: link.expiresAt })
+    shareVisible.value = true
+  } catch {
+    // request.ts 已按响应码弹过提示
+  } finally {
+    shareLoading.value = false
+  }
+}
+
 function openCreate(): void {
   editing.value = null
   dialogVisible.value = true
@@ -272,7 +292,7 @@ onMounted(async () => {
         <span class="brand-user">{{ auth.user?.nickname || auth.user?.username }}</span>
       </div>
       <div class="topbar-actions">
-        <el-button text type="primary" :disabled="!shareLink" @click="shareVisible = true">分享</el-button>
+        <el-button text type="primary" :loading="shareLoading" @click="openShare">分享</el-button>
         <el-button text type="primary" @click="onLogout">退出</el-button>
       </div>
     </header>
@@ -426,7 +446,10 @@ onMounted(async () => {
           <el-button @click="copyShareLink">复制</el-button>
         </template>
       </el-input>
-      <p class="share-tip">链接里的 token 就是账本的公示凭证，转发前确认对象。</p>
+      <p class="share-tip">
+        链接 <strong>3 天后自动失效</strong>；每次点「分享」都会换一条新链接，之前发出去的立即作废。
+      </p>
+      <p v-if="shareExpiresAt" class="share-tip">当前链接有效期至 {{ shareExpiresAt }}</p>
     </el-dialog>
   </div>
 </template>
