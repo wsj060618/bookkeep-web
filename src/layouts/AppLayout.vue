@@ -394,7 +394,7 @@ onMounted(async () => {
 .fab {
   display: none;
   position: fixed;
-  left: 16px;
+  right: 16px;
   bottom: 16px;
   height: 44px;
   padding: 0 18px;
