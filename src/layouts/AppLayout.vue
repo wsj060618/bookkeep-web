@@ -141,9 +141,6 @@ onMounted(async () => {
       </div>
 
       <nav class="nav">
-        <RouterLink to="/" class="nav-item" :class="{ active: route.path === '/' }" title="概览">
-          <span class="nav-icon">📊</span><span class="label">概览</span>
-        </RouterLink>
         <RouterLink
           to="/transactions"
           class="nav-item"
@@ -151,6 +148,14 @@ onMounted(async () => {
           title="流水"
         >
           <span class="nav-icon">📋</span><span class="label">流水</span>
+        </RouterLink>
+        <RouterLink
+          to="/stats"
+          class="nav-item"
+          :class="{ active: route.path === '/stats' }"
+          title="统计"
+        >
+          <span class="nav-icon">📊</span><span class="label">统计</span>
         </RouterLink>
         <RouterLink
           to="/books"
@@ -205,15 +210,15 @@ onMounted(async () => {
 
     <el-drawer v-model="drawerVisible" title="导航" direction="ltr" size="220px">
       <nav class="drawer-nav">
-        <RouterLink to="/" class="nav-item" :class="{ active: route.path === '/' }">
-          <span class="nav-icon">📊</span><span>概览</span>
-        </RouterLink>
         <RouterLink
           to="/transactions"
           class="nav-item"
           :class="{ active: route.path === '/transactions' }"
         >
           <span class="nav-icon">📋</span><span>流水</span>
+        </RouterLink>
+        <RouterLink to="/stats" class="nav-item" :class="{ active: route.path === '/stats' }">
+          <span class="nav-icon">📊</span><span>统计</span>
         </RouterLink>
         <RouterLink to="/books" class="nav-item" :class="{ active: route.path === '/books' }">
           <span class="nav-icon">📚</span><span>账本</span>

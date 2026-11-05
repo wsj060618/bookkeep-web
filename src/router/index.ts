@@ -35,15 +35,17 @@ const router = createRouter({
       // 子路由继承父级 meta：不用每条都写一遍
       meta: { requiresAuth: true },
       children: [
-        {
-          path: '',
-          name: 'dashboard',
-          component: () => import('../views/DashboardView.vue'),
-        },
+        // 默认落在流水页：登录后最常做的就是看流水/记一笔
+        { path: '', redirect: { name: 'transactions' } },
         {
           path: 'transactions',
           name: 'transactions',
           component: () => import('../views/TransactionsView.vue'),
+        },
+        {
+          path: 'stats',
+          name: 'stats',
+          component: () => import('../views/StatsView.vue'),
         },
         {
           path: 'books',
@@ -75,7 +77,7 @@ router.beforeEach((to) => {
   }
   // 已登录就不该再看到登录/注册页
   if ((to.name === 'login' || to.name === 'register') && hasToken) {
-    return { name: 'dashboard' }
+    return { name: 'transactions' }
   }
   return true
 })

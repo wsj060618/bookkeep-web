@@ -93,7 +93,7 @@ async function onSubmit(): Promise<void> {
     // 注册成功但没 token：立刻用同一组账号密码登录
     await auth.login(username, password)
     ElMessage.success('注册成功，已为你建好账本')
-    await router.push({ name: 'home' })
+    await router.push({ name: 'transactions' })
   } catch (error) {
     // 拦截器已经弹过错误提示，这里只处理「用户名已存在」这种情况的下一步引导
     const message = error instanceof Error ? error.message : ''

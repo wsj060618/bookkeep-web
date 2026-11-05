@@ -2,7 +2,7 @@
 
 记账本前端。Vue 3 + TypeScript + Vite + Element Plus + Pinia + vue-router + axios。
 
-当前进度：**W1 + W2 + W3 页面已就绪**——登录/注册、概览（月度统计 + 最近流水）、流水（筛选/分页/导出）、账本管理、只读公示页；
+当前进度：**W1 + W2 + W3 页面已就绪**——登录/注册、流水（默认首页：筛选/分页/导出/记一笔）、统计（按月收支 + 分类占比）、账本管理、只读公示页；
 登录后的页面统一套 `AppLayout`（桌面左侧竖栏 + 内容区最大 1440，手机回到单列 + 抽屉导航）。
 按 `D:\coding\bookkeep-server\PLAN.md` §6.1 的节奏，页面随后端模块长出来：
 
@@ -38,13 +38,15 @@ npm run preview      # 预览 dist 产物
 /login             LoginView            未登录页（不套布局）
 /register          RegisterView         未登录页
 /                  AppLayout
-  ├─ ''            DashboardView        概览：本月统计 + 最近 10 笔
+  ├─ ''            → 重定向到 /transactions（默认页）
   ├─ transactions  TransactionsView     流水：筛选 / 分页 / 导出 / 改删
+  ├─ stats         StatsView            统计：按月收支 + 支出分类占比
   └─ books         BooksView            账本：新建 / 改名 / 切换 / 回收站
 /report/:token     PublicReportView     免登录公示页（不套布局）
 ```
 
 - `src/layouts/AppLayout.vue`：左侧竖栏（≥1024 显示、768–1023 收成图标栏、<768 改抽屉）+ 顶栏（账本切换器 / 分享 / 退出）
+- 导航顺序：**流水（默认）→ 统计 → 账本**；没有「概览」页，统计是独立页面
 - 「记一笔」「分享」两个弹窗挂在 layout，三个页面共用；页面通过 `src/composables/shell.ts` 的 `useShell()` 拿到分类与 `txVersion`
 - **切账本**时 layout 给 `RouterView` 换 `key`，子页面重新挂载并各自重拉数据，避免漏改
 - 内容区 `max-width: 1440px`（不写死 720，桌面不再两侧大片留白；也不拉满 4K 屏，否则流水行会被拉成一条线）
@@ -62,10 +64,12 @@ npm run preview      # 预览 dist 产物
 ## W1 + W2 验收（后端在跑的前提下，5 分钟）
 
 0. **无痕窗口**打开 `http://localhost:5173/register` → 第一步填账号，第二步给账本起名（默认「班级账本」）→
-   完成注册后自动登录进首页，账本名就是刚填的、分类下拉里有 13 个分类；
+   完成注册后自动登录，**默认落在流水页**，账本名就是刚填的、分类下拉里有 13 个分类；
    再用同一个用户名注册 → 提示已被占用并给「去登录」引导（注册非幂等，连点不能重复建号）
-1. 登录后「概览」显示「本月收入 / 本月支出 / 本月结余 / 累计结余」，空账本是 `0.00` 而不是空白
-2. 点左侧竖栏「记一笔」（手机上点右下角）→ 选分类、填金额、保存 → 「流水」列表出现新行，累计结余跟着变
+1. 点侧栏「统计」→「本月收入 / 本月支出 / 本月结余 / 累计结余」，空账本是 `0.00` 而不是空白；
+   下方列出各支出分类的金额与占比条
+2. 点左侧竖栏「记一笔」（手机上点右下角）→ 选分类、填金额、保存 → 回到「流水」列表出现新行；
+   再切到「统计」→ 本月收入/支出与分类占比跟着变（不需要手动刷新）
 3. **连点保存** → 只成功一笔（按钮单飞，Network 里只有一次 POST）
 4. 点顶栏账本名 → 下拉里直接切另一本；或「管理账本…」进账本页 → 新建「二班班费」→ 自动切过去、
    分类换了一套（13 条但 id 不同）、流水是空的；切回原账本，原来的流水和统计回来
@@ -113,7 +117,7 @@ TS = JS + **类型标注**。类型只在写代码/编译时存在，`npm run bu
 | interface | `src/types/api.ts` 的 `User` / `LoginResp` | 描述对象有哪些字段、什么类型，对应后端 DTO |
 | 泛型 | `ApiResult<T>`、`get<T>(url)` | `T` 是占位符：`get<User>('/auth/me')` 得到的类型就是 `User` |
 | 联合类型 | `string \| null`（`User.nickname`）、`'income' \| 'expense'`（`TxType`） | 「要么是 A 要么是 B」；`TxType` 只有两个合法值 |
-| 类型收窄 | `DashboardView.vue` 里 `v-if="auth.user"` | 判断过后 TS 才知道 `auth.user` 不是 null，才能 `.nickname` |
+| 类型收窄 | `TransactionsView.vue` 里 `v-if="auth.user"` | 判断过后 TS 才知道 `auth.user` 不是 null，才能 `.nickname` |
 | `!` 断言 | `formRef.value!`（本仓库没用，改用 `if (!formRef.value) return`） | 「我保证不是 null」，滥用会掩盖 bug，优先用 if 判断 |
 | `?` 可选 | `error.response?.status` | 可能不存在，不存在就返回 `undefined`，而不是抛异常 |
 | `type` vs `interface` | `type BookType = ...`，`interface User { ... }` | 项目里：给对象定型用 `interface`，给别名/联合用 `type` |

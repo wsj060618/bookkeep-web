@@ -131,7 +131,7 @@ async function onDelete(tx: Transaction): Promise<void> {
     if (list.value.length === 1 && page.value > 1) {
       page.value -= 1
     }
-    // 交给 version 触发重拉，顺带让概览页的数据也更新
+    // 交给 version 触发重拉，顺带让统计页的数据也更新
     shell.notifyTxChanged()
   } catch {
     // 提示已由拦截器弹出

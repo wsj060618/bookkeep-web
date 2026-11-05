@@ -3,8 +3,7 @@ import { colorOf, iconOf } from '../utils/category'
 import type { Transaction } from '../types/api'
 
 /**
- * 一条流水。列表在桌面/手机上是同一套卡片行（不用 el-table：表格在手机上必横向滚动）。
- * 概览页只读，流水页带「改/删」。
+ * 一条流水。流水页在桌面/手机上是同一套卡片行（不用 el-table：表格在手机上必横向滚动）。
  */
 defineProps<{
   tx: Transaction

@@ -43,7 +43,7 @@ async function onSubmit(): Promise<void> {
     // 第 0 步要验收的是「token 真的能带在后续请求上」，而不是「页面能显示名字」
     await auth.loadMe()
     ElMessage.success(`欢迎回来，${resp.user.nickname || resp.user.username}`)
-    await router.push({ name: 'home' })
+    await router.push({ name: 'transactions' })
   } catch {
     // 失败提示已由 axios 拦截器统一弹出（密码错误 / 网络异常 / 401），
     // 这里只需要保证 submitting 被复位，别让按钮永远转圈
