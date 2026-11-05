@@ -191,7 +191,6 @@ onMounted(() => {
         <el-button type="primary" plain :loading="exporting" @click="onExport">
           {{ dateRange ? '导出所选区间' : '导出全部' }}
         </el-button>
-        <el-button type="primary" @click="shell.openCreate()">记一笔</el-button>
       </div>
     </section>
 

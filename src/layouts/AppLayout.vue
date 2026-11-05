@@ -226,7 +226,7 @@ onMounted(async () => {
       </nav>
     </el-drawer>
 
-    <el-button class="fab" type="primary" circle size="large" @click="openCreate">记一笔</el-button>
+    <el-button class="fab" type="primary" @click="openCreate">＋ 记一笔</el-button>
 
     <TransactionFormDialog
       v-model="formVisible"
@@ -394,9 +394,14 @@ onMounted(async () => {
 .fab {
   display: none;
   position: fixed;
-  right: 24px;
-  bottom: 24px;
-  box-shadow: 0 6px 16px rgb(59 130 246 / 40%);
+  left: 16px;
+  bottom: 16px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgb(59 130 246 / 35%);
   z-index: 20;
 }
 
