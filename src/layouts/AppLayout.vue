@@ -6,6 +6,7 @@ import { createShareLink, listBooks, switchBook } from '../api/book'
 import { listCategories } from '../api/category'
 import { useAuthStore } from '../stores/auth'
 import { SHELL_KEY, type ShellApi } from '../composables/shell'
+import { copyText } from '../utils/clipboard'
 import TransactionFormDialog from '../components/TransactionFormDialog.vue'
 import type { Category, Transaction } from '../types/api'
 
@@ -73,12 +74,11 @@ async function openShare(): Promise<void> {
 
 async function copyShareLink(): Promise<void> {
   if (!shareLink.value) return
-  try {
-    await navigator.clipboard.writeText(shareLink.value)
+  const ok = await copyText(shareLink.value)
+  if (ok) {
     ElMessage.success('链接已复制')
-  } catch {
-    // 局域网 http 下 clipboard API 不可用（非安全上下文），只能提示手动复制
-    ElMessage.warning('复制失败，请手动选中链接复制')
+  } else {
+    ElMessage.warning('这个浏览器不允许自动复制，请长按链接手动选中')
   }
 }
 

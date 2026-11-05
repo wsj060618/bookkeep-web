@@ -135,6 +135,7 @@ TS = JS + **类型标注**。类型只在写代码/编译时存在，`npm run bu
 
 - Element Plus 全量引入（`main.ts`），首屏 JS ≈ 1 MB（gzip 330 KB）。项目演示阶段不值得为按需引入增加配置；
   真要优化再加 `unplugin-vue-components` 或 `unplugin-element-plus`
+- 局域网 http 不是安全上下文（secure context），浏览器不暴露 `navigator.clipboard`：分享弹窗的「复制」会退回 `document.execCommand('copy')`（`src/utils/clipboard.ts`）；两者都被拒时提示长按手动选择。想彻底避免就上 HTTPS。
 - token 存 localStorage：能扛刷新，但 XSS 可窃取。生产环境若要更稳，可换 httpOnly Cookie + CSRF
 - 401 时用 `window.location.assign('/login')` 整页跳转（避免 `router → views → api → request` 的循环依赖），
   代价是丢掉「登录后回到原页面」的体验，等页面多了再改成事件订阅
