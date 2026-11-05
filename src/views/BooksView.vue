@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createBook,
@@ -14,25 +14,12 @@ import type { Book, BookTrash } from '../types/api'
 import { useAuthStore } from '../stores/auth'
 
 /**
- * 账本管理：新建 / 改名 / 切换 / 删除（回收站）/ 恢复。
+ * 账本页：新建 / 改名 / 切换 / 删除（回收站）/ 恢复。
  * 列表以 store 里的 books 为准（顶栏切换器也读它），回收站单独拉。
- * 切换、新建、删除都会改变「当前账本」，必须通知父页面重新拉分类 / 流水 / 统计。
+ * 切换 / 新建 / 删除都可能改变「当前账本」→ AppLayout 给 RouterView 换 key，本页会重新挂载并重拉。
  */
 
-const props = defineProps<{ modelValue: boolean }>()
-
-const emit = defineEmits<{
-  'update:modelValue': [value: boolean]
-  /** 当前账本可能变了，父页面要重新加载数据 */
-  changed: []
-}>()
-
 const auth = useAuthStore()
-
-const visible = computed({
-  get: () => props.modelValue,
-  set: (value) => emit('update:modelValue', value),
-})
 
 const books = computed(() => auth.books)
 
@@ -57,17 +44,6 @@ async function load(): Promise<void> {
   }
 }
 
-watch(
-  () => props.modelValue,
-  (open) => {
-    if (!open) return
-    tab.value = 'books'
-    newName.value = ''
-    renamingId.value = null
-    void load()
-  },
-)
-
 /** 只用于展示「还剩几天」；是否该清理由后端判断，客户端时钟不可信 */
 function daysLeft(expireAt: string): number {
   const remain = new Date(expireAt.replace(' ', 'T')).getTime() - Date.now()
@@ -85,10 +61,8 @@ async function onCreate(): Promise<void> {
   try {
     const book = await createBook({ name })
     newName.value = ''
-    await load()
     ElMessage.success(`已新建「${book.name}」并切换过去`)
-    // 新建即切换：分类也换了一套，父页面必须重载
-    emit('changed')
+    // 新建即切换 → layout 换 key，本页会重新挂载
   } catch {
     // 提示已由拦截器弹出（如「账本最多 10 本」）
   } finally {
@@ -102,7 +76,6 @@ async function onSwitch(book: Book): Promise<void> {
   try {
     auth.setBooks(await switchBook(book.id))
     ElMessage.success(`已切换到「${book.name}」`)
-    emit('changed')
   } catch {
     // 同上
   } finally {
@@ -150,8 +123,6 @@ async function onDelete(book: Book): Promise<void> {
     await deleteBook(book.id)
     await load()
     ElMessage.success('已移入回收站')
-    // 删的可能就是当前账本（后端会自动重指），数据必须重载
-    emit('changed')
   } catch {
     // 如「至少保留一本账本」
   } finally {
@@ -172,10 +143,19 @@ async function onRestore(item: BookTrash): Promise<void> {
     busy.value = false
   }
 }
+
+onMounted(() => {
+  void load()
+})
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="账本管理" width="min(560px, 94vw)">
+  <div class="books-page">
+    <div class="page-head">
+      <h2 class="page-title">账本</h2>
+      <p class="page-desc">一个账本 = 一套独立数据（分类、流水、统计、导出都跟着当前账本走）。</p>
+    </div>
+
     <el-tabs v-model="tab">
       <el-tab-pane label="我的账本" name="books">
         <div class="create-row">
@@ -246,10 +226,25 @@ async function onRestore(item: BookTrash): Promise<void> {
         </p>
       </el-tab-pane>
     </el-tabs>
-  </el-dialog>
+  </div>
 </template>
 
 <style scoped>
+.page-head {
+  margin-bottom: 8px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.page-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
 .create-row {
   display: flex;
   gap: 8px;
@@ -257,7 +252,7 @@ async function onRestore(item: BookTrash): Promise<void> {
 }
 
 .book-list {
-  min-height: 80px;
+  min-height: 120px;
   display: grid;
   gap: 6px;
 }
@@ -266,7 +261,7 @@ async function onRestore(item: BookTrash): Promise<void> {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   background: var(--el-fill-color-lighter);
 }
@@ -300,5 +295,11 @@ async function onRestore(item: BookTrash): Promise<void> {
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-secondary);
+}
+
+@media (max-width: 767px) {
+  .trash-meta {
+    display: none;
+  }
 }
 </style>

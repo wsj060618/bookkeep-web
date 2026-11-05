@@ -3,7 +3,7 @@ import { getToken } from '../utils/token'
 
 /**
  * vue-router 的 meta 默认类型是 Record<string, unknown>，
- * 直接读 to.meta.requiresAuth 会被当成 unknown 用不了。
+ * 直接用 to.meta.requiresAuth 会被当成 unknown 用不了。
  * 这段 declare module 就是给 meta 补一个字段的类型（TS 的「声明合并」，运行时没有任何代码）。
  */
 declare module 'vue-router' {
@@ -12,6 +12,10 @@ declare module 'vue-router' {
   }
 }
 
+/**
+ * 登录后的页面都挂在 AppLayout 下（左侧竖栏 + 顶栏 + 最大 1440 的内容区）。
+ * /login、/register、/report/:token 不套布局：前两个是未登录页，最后一个是给同学看的只读公示页。
+ */
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -27,9 +31,26 @@ const router = createRouter({
     },
     {
       path: '/',
-      name: 'home',
-      component: () => import('../views/HomeView.vue'),
+      component: () => import('../layouts/AppLayout.vue'),
+      // 子路由继承父级 meta：不用每条都写一遍
       meta: { requiresAuth: true },
+      children: [
+        {
+          path: '',
+          name: 'dashboard',
+          component: () => import('../views/DashboardView.vue'),
+        },
+        {
+          path: 'transactions',
+          name: 'transactions',
+          component: () => import('../views/TransactionsView.vue'),
+        },
+        {
+          path: 'books',
+          name: 'books',
+          component: () => import('../views/BooksView.vue'),
+        },
+      ],
     },
     // 只读公示页：免登录（后端 /api/public/report/** 是唯一匿名放行的接口）
     {
@@ -54,7 +75,7 @@ router.beforeEach((to) => {
   }
   // 已登录就不该再看到登录/注册页
   if ((to.name === 'login' || to.name === 'register') && hasToken) {
-    return { name: 'home' }
+    return { name: 'dashboard' }
   }
   return true
 })

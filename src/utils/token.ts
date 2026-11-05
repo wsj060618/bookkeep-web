@@ -27,7 +27,10 @@ export function getStoredBooks(): Book[] | null {
   const raw = localStorage.getItem(BOOKS_KEY)
   if (!raw) return null
   try {
-    return JSON.parse(raw) as Book[]
+    const parsed: unknown = JSON.parse(raw)
+    // 老版本/手改过的 localStorage 可能是对象或字符串：直接当空处理，
+    // 否则 AppLayout 里 books.find(...) 会抛 TypeError，整页白屏
+    return Array.isArray(parsed) ? (parsed as Book[]) : null
   } catch {
     return null
   }
