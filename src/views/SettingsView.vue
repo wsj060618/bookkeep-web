@@ -1,24 +1,27 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { deleteAccount, updatePassword, updateProfile } from '../api/user'
 import { useAuthStore } from '../stores/auth'
 
 /**
  * 账号设置：资料 / 改密码 / 注销。
  * 改密码和注销都会让 token 失效（后端 token_version +1 / user 已删），所以成功后必须清本地状态回登录页。
+ * 资料保存和注销都要二次确认，各自一个对话框（注销对话框里带密码，等于一次确认）。
  */
 
 const router = useRouter()
 const auth = useAuthStore()
+
+const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 /* ---------- 资料 ---------- */
 
 const profileForm = reactive({
   username: auth.user?.username ?? '',
   email: auth.user?.email ?? '',
-  password: '',
 })
 // 子页面 setup 早于 AppLayout 的 onMounted（/me 还没回来），所以这里要用 watch 补一次回填，
 // 否则打开设置页会看到空的用户名/邮箱
@@ -28,21 +31,24 @@ watch(
     if (!user) return
     profileForm.username = user.username
     profileForm.email = user.email
-    profileForm.password = ''
   },
   { immediate: true },
 )
-const profileSaving = ref(false)
+
 /** 只有邮箱被改动时才需要「当前密码」（邮箱是登录凭据） */
 const emailChanged = computed(
   () => profileForm.email.trim().toLowerCase() !== (auth.user?.email ?? '').toLowerCase(),
 )
 
-async function onSaveProfile(): Promise<void> {
-  if (profileSaving.value) return
+const profileDialog = ref(false)
+const profilePassword = ref('')
+const profileSaving = ref(false)
+
+/** 点「保存资料」：先做格式校验，再弹确认框（改邮箱时才要密码） */
+function openProfileDialog(): void {
   const username = profileForm.username.trim()
   const email = profileForm.email.trim()
-  if (!/^[a-zA-Z0-9_]{4,20}$/.test(username)) {
+  if (!USERNAME_RE.test(username)) {
     ElMessage.warning('用户名需 4–20 位字母、数字或下划线')
     return
   }
@@ -50,23 +56,29 @@ async function onSaveProfile(): Promise<void> {
     ElMessage.warning('邮箱不能为空')
     return
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!EMAIL_RE.test(email)) {
     ElMessage.warning('邮箱格式不正确')
     return
   }
-  const emailChangedNow = email.toLowerCase() !== (auth.user?.email ?? '').toLowerCase()
-  if (emailChangedNow && !profileForm.password) {
-    ElMessage.warning('改邮箱需要输入当前密码')
+  profilePassword.value = ''
+  profileDialog.value = true
+}
+
+async function confirmSaveProfile(): Promise<void> {
+  if (profileSaving.value) return
+  if (emailChanged.value && !profilePassword.value) {
+    ElMessage.warning('修改登录邮箱需要输入当前密码')
     return
   }
   profileSaving.value = true
   try {
     await updateProfile({
-      username,
-      email,
-      password: emailChangedNow ? profileForm.password : undefined,
+      username: profileForm.username.trim(),
+      email: profileForm.email.trim(),
+      password: emailChanged.value ? profilePassword.value : undefined,
     })
-    profileForm.password = ''
+    profileDialog.value = false
+    profilePassword.value = ''
     await auth.loadMe() // 顶栏名字立即变
     ElMessage.success('资料已更新')
   } catch {
@@ -124,29 +136,24 @@ async function onChangePassword(): Promise<void> {
 
 /* ---------- 注销 ---------- */
 
-const deleteForm = reactive({ password: '' })
+const deleteDialog = ref(false)
+const deletePassword = ref('')
 const deleting = ref(false)
 
-async function onDeleteAccount(): Promise<void> {
+function openDeleteDialog(): void {
+  deletePassword.value = ''
+  deleteDialog.value = true
+}
+
+async function confirmDelete(): Promise<void> {
   if (deleting.value) return
-  if (!deleteForm.password) {
+  if (!deletePassword.value) {
     ElMessage.warning('请输入当前密码')
     return
   }
-
-  const confirmed = await ElMessageBox.confirm(
-    '注销后账号立即无法登录，名下账本会进入回收站（15 天后连同分类与流水彻底删除）。' +
-      '期间无法自助恢复，只能联系维护者改库。确定继续吗？',
-    '注销账户',
-    { type: 'error', confirmButtonText: '确认注销', cancelButtonText: '取消' },
-  )
-    .then(() => true)
-    .catch(() => false)
-  if (!confirmed) return
-
   deleting.value = true
   try {
-    await deleteAccount({ password: deleteForm.password })
+    await deleteAccount({ password: deletePassword.value })
     ElMessage.success('账号已注销')
     auth.logout()
     await router.replace({ name: 'login' })
@@ -174,17 +181,7 @@ async function onDeleteAccount(): Promise<void> {
         <el-form-item label="登录邮箱">
           <el-input v-model="profileForm.email" maxlength="100" placeholder="name@example.com" />
         </el-form-item>
-        <!-- 邮箱没动就不显示：避免「这框是干嘛的」；改邮箱时才要求输入当前登录密码 -->
-        <el-form-item v-if="emailChanged" label="当前密码（确认改邮箱）">
-          <el-input
-            v-model="profileForm.password"
-            type="password"
-            show-password
-            autocomplete="current-password"
-            placeholder="输入当前登录密码"
-          />
-        </el-form-item>
-        <el-button type="primary" :loading="profileSaving" @click="onSaveProfile">保存资料</el-button>
+        <el-button type="primary" @click="openProfileDialog">保存资料</el-button>
       </el-form>
     </section>
 
@@ -211,13 +208,63 @@ async function onDeleteAccount(): Promise<void> {
         账号立即无法登录，名下账本进入回收站，15 天后连同分类与流水彻底删除。
         <strong>期间无法自助恢复</strong>，只能联系维护者改库。
       </p>
-      <el-form label-position="top" @submit.prevent>
-        <el-form-item label="当前密码">
-          <el-input v-model="deleteForm.password" type="password" show-password autocomplete="current-password" />
-        </el-form-item>
-        <el-button type="danger" :loading="deleting" @click="onDeleteAccount">注销账户</el-button>
-      </el-form>
+      <el-button type="danger" @click="openDeleteDialog">注销账户</el-button>
     </section>
+
+    <!-- 保存资料的确认框：只有改了邮箱才要求密码 -->
+    <el-dialog v-model="profileDialog" title="保存资料" width="min(460px, 92vw)">
+      <div class="dialog-body">
+        <p class="dialog-line">
+          用户名：<strong>{{ auth.user?.username }}</strong>
+          <span v-if="profileForm.username.trim() !== auth.user?.username"> → {{ profileForm.username.trim() }}</span>
+        </p>
+        <p class="dialog-line">
+          登录邮箱：<strong>{{ auth.user?.email }}</strong>
+          <span v-if="emailChanged"> → {{ profileForm.email.trim() }}</span>
+        </p>
+        <p v-if="!emailChanged" class="dialog-tip">只修改显示名，不需要密码。</p>
+        <template v-else>
+          <p class="dialog-tip">邮箱是登录凭据，修改后请用新邮箱登录。需要验证当前密码：</p>
+          <el-input
+            v-model="profilePassword"
+            type="password"
+            show-password
+            autocomplete="current-password"
+            placeholder="当前登录密码"
+            @keyup.enter="confirmSaveProfile"
+          />
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="profileDialog = false">取消</el-button>
+        <el-button type="primary" :loading="profileSaving" @click="confirmSaveProfile">确认保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 注销确认框：密码 + 后果说明，一次确认，避免「弹两次框」 -->
+    <el-dialog v-model="deleteDialog" title="注销账户" width="min(460px, 92vw)">
+      <el-alert
+        type="error"
+        :closable="false"
+        show-icon
+        title="注销后不可自助恢复"
+        description="账号立即无法登录，名下账本进入回收站，15 天后连同分类与流水彻底删除。"
+      />
+      <div class="dialog-body">
+        <el-input
+          v-model="deletePassword"
+          type="password"
+          show-password
+          autocomplete="current-password"
+          placeholder="输入当前密码确认"
+          @keyup.enter="confirmDelete"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="deleteDialog = false">取消</el-button>
+        <el-button type="danger" :loading="deleting" @click="confirmDelete">确认注销</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -264,5 +311,25 @@ async function onDeleteAccount(): Promise<void> {
 
 .danger .card-title {
   color: var(--el-color-danger);
+}
+
+.dialog-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.dialog-line {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.dialog-tip {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
 }
 </style>
