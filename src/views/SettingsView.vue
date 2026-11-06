@@ -205,8 +205,8 @@ async function confirmDelete(): Promise<void> {
     <section class="card danger">
       <h3 class="card-title">注销账户</h3>
       <p class="card-tip">
-        账号立即无法登录，名下账本进入回收站，15 天后连同分类与流水彻底删除。
-        <strong>期间无法自助恢复</strong>，只能联系维护者改库。
+        账号与名下全部账本、分类、流水会被<strong>立即彻底删除</strong>，不进回收站、无法恢复。
+        请确认已经从别处保留需要的数据。
       </p>
       <el-button type="danger" @click="openDeleteDialog">注销账户</el-button>
     </section>
@@ -247,8 +247,8 @@ async function confirmDelete(): Promise<void> {
         type="error"
         :closable="false"
         show-icon
-        title="注销后不可自助恢复"
-        description="账号立即无法登录，名下账本进入回收站，15 天后连同分类与流水彻底删除。"
+        title="注销后无法恢复"
+        description="账号与名下全部账本、分类、流水会被立即物理删除，不进回收站。"
       />
       <div class="dialog-body">
         <el-input
