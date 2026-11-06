@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { deleteAccount, updatePassword, updateProfile } from '../api/user'
@@ -20,7 +20,23 @@ const profileForm = reactive({
   email: auth.user?.email ?? '',
   password: '',
 })
+// 子页面 setup 早于 AppLayout 的 onMounted（/me 还没回来），所以这里要用 watch 补一次回填，
+// 否则打开设置页会看到空的用户名/邮箱
+watch(
+  () => auth.user,
+  (user) => {
+    if (!user) return
+    profileForm.username = user.username
+    profileForm.email = user.email
+    profileForm.password = ''
+  },
+  { immediate: true },
+)
 const profileSaving = ref(false)
+/** 只有邮箱被改动时才需要「当前密码」（邮箱是登录凭据） */
+const emailChanged = computed(
+  () => profileForm.email.trim().toLowerCase() !== (auth.user?.email ?? '').toLowerCase(),
+)
 
 async function onSaveProfile(): Promise<void> {
   if (profileSaving.value) return
@@ -38,8 +54,8 @@ async function onSaveProfile(): Promise<void> {
     ElMessage.warning('邮箱格式不正确')
     return
   }
-  const emailChanged = email.toLowerCase() !== (auth.user?.email ?? '').toLowerCase()
-  if (emailChanged && !profileForm.password) {
+  const emailChangedNow = email.toLowerCase() !== (auth.user?.email ?? '').toLowerCase()
+  if (emailChangedNow && !profileForm.password) {
     ElMessage.warning('改邮箱需要输入当前密码')
     return
   }
@@ -48,7 +64,7 @@ async function onSaveProfile(): Promise<void> {
     await updateProfile({
       username,
       email,
-      password: emailChanged ? profileForm.password : undefined,
+      password: emailChangedNow ? profileForm.password : undefined,
     })
     profileForm.password = ''
     await auth.loadMe() // 顶栏名字立即变
@@ -158,13 +174,14 @@ async function onDeleteAccount(): Promise<void> {
         <el-form-item label="登录邮箱">
           <el-input v-model="profileForm.email" maxlength="100" placeholder="name@example.com" />
         </el-form-item>
-        <el-form-item label="当前密码（仅改邮箱时需要）">
+        <!-- 邮箱没动就不显示：避免「这框是干嘛的」；改邮箱时才要求输入当前登录密码 -->
+        <el-form-item v-if="emailChanged" label="当前密码（确认改邮箱）">
           <el-input
             v-model="profileForm.password"
             type="password"
             show-password
             autocomplete="current-password"
-            placeholder="不改邮箱可以留空"
+            placeholder="输入当前登录密码"
           />
         </el-form-item>
         <el-button type="primary" :loading="profileSaving" @click="onSaveProfile">保存资料</el-button>
