@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createBook,
@@ -62,8 +62,10 @@ async function onCreate(): Promise<void> {
   try {
     const book = await createBook({ name })
     newName.value = ''
+    // 必须刷新 store：layout 的 key 取自 store 里的 current 账本，只调接口不更新 store 的话
+    // 页面不会重挂，看起来就是「新建了但没切过去，刷新一下才对」
+    await load()
     ElMessage.success(`已新建「${book.name}」并切换过去`)
-    // 新建即切换 → layout 换 key，本页会重新挂载
   } catch {
     // 提示已由拦截器弹出（如「账本最多 10 本」）
   } finally {
@@ -149,7 +151,17 @@ async function onRestore(item: BookTrash): Promise<void> {
 async function onPurge(item: BookTrash): Promise<void> {
   if (busy.value) return
   const confirmed = await ElMessageBox.confirm(
-    `「${item.name}」会立刻连同全部分类与流水被彻底删除，**无法恢复**（不用等到 15 天后）。确定吗？`,
+    // 用 VNode 而不是字符串：ElMessageBox 不解析 markdown，字符串里的 ** 会原样显示；
+    // 也不能用 dangerouslyUseHTMLString —— 账本名是用户输入，拼 HTML 等于开 XSS
+    h('div', [
+      `「${item.name}」会立刻连同全部分类与流水被彻底删除，`,
+      h(
+        'span',
+        { style: 'color: var(--el-color-danger); font-weight: 600' },
+        '无法恢复',
+      ),
+      '（不用等到 15 天后）。确定吗？',
+    ]),
     '彻底删除账本',
     { type: 'error', confirmButtonText: '彻底删除', cancelButtonText: '取消' },
   )
