@@ -23,9 +23,18 @@ const profileSaving = ref(false)
 
 async function onSaveProfile(): Promise<void> {
   if (profileSaving.value) return
+  const email = profileForm.email.trim()
+  if (!email) {
+    ElMessage.warning('邮箱不能为空（找回密码要用）')
+    return
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    ElMessage.warning('邮箱格式不正确')
+    return
+  }
   profileSaving.value = true
   try {
-    await updateProfile({ nickname: profileForm.nickname, email: profileForm.email })
+    await updateProfile({ nickname: profileForm.nickname.trim(), email })
     await auth.loadMe() // 顶栏昵称立即变
     ElMessage.success('资料已更新')
   } catch {
@@ -130,7 +139,7 @@ async function onDeleteAccount(): Promise<void> {
         <el-form-item label="昵称">
           <el-input v-model="profileForm.nickname" maxlength="50" placeholder="留空则显示用户名" />
         </el-form-item>
-        <el-form-item label="邮箱（仅展示，不发验证邮件）">
+        <el-form-item label="邮箱（找回密码要用，必填）">
           <el-input v-model="profileForm.email" maxlength="100" placeholder="name@example.com" />
         </el-form-item>
         <el-button type="primary" :loading="profileSaving" @click="onSaveProfile">保存资料</el-button>

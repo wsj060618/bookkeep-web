@@ -30,6 +30,17 @@ const router = createRouter({
       component: () => import('../views/RegisterView.vue'),
     },
     {
+      path: '/forgot-password',
+      name: 'forgot-password',
+      component: () => import('../views/ForgotPasswordView.vue'),
+    },
+    // 邮件里的链接落在这里：/reset-password?token=xxx（匿名可访问）
+    {
+      path: '/reset-password',
+      name: 'reset-password',
+      component: () => import('../views/ResetPasswordView.vue'),
+    },
+    {
       path: '/',
       component: () => import('../layouts/AppLayout.vue'),
       // 子路由继承父级 meta：不用每条都写一遍

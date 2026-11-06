@@ -36,7 +36,9 @@ npm run preview      # 预览 dist 产物
 
 ```
 /login             LoginView            未登录页（不套布局）
-/register          RegisterView         未登录页
+/register          RegisterView         未登录页（邮箱必填）
+/forgot-password   ForgotPasswordView   填写用户名+邮箱申请重置
+/reset-password    ResetPasswordView    邮件链接落地：?token=xxx 设置新密码
 /                  AppLayout
   ├─ ''            → 重定向到 /transactions（默认页）
   ├─ transactions  TransactionsView     流水：筛选 / 分页 / 导出 / 改删

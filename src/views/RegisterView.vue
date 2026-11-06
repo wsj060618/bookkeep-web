@@ -51,7 +51,10 @@ const rules: FormRules = {
     { validator: validateConfirm, trigger: 'blur' },
   ],
   nickname: [{ max: 50, message: '昵称不能超过 50 个字', trigger: 'blur' }],
-  email: [{ type: 'email', message: '邮箱格式不正确', trigger: 'blur' }],
+  email: [
+    { required: true, message: '请输入邮箱（找回密码要用）', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
+  ],
   bookName: [
     { required: true, message: '给账本起个名字', trigger: 'blur' },
     { max: 50, message: '账本名不能超过 50 个字', trigger: 'blur' },
@@ -88,7 +91,7 @@ async function onSubmit(): Promise<void> {
       password,
       nickname: form.nickname.trim() || null,
       bookName: form.bookName.trim(),
-      email: form.email.trim() || null,
+      email: form.email.trim(),
     })
     // 注册成功但没 token：立刻用同一组账号密码登录
     await auth.login(username, password)
@@ -171,8 +174,8 @@ async function onSubmit(): Promise<void> {
             <el-input v-model="form.nickname" placeholder="默认与用户名相同" clearable />
           </el-form-item>
 
-          <el-form-item label="邮箱（可不填）" prop="email">
-            <el-input v-model="form.email" placeholder="仅作资料展示，不支持找回密码" clearable />
+          <el-form-item label="邮箱" prop="email">
+            <el-input v-model="form.email" placeholder="找回密码要用，请填常用邮箱" clearable />
           </el-form-item>
 
           <el-button type="primary" size="large" class="register-submit" @click="next">

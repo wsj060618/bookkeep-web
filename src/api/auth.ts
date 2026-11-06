@@ -1,4 +1,4 @@
-import type { LoginResp, RegisterReq, User } from '../types/api'
+import type { ForgotPasswordReq, LoginResp, RegisterReq, ResetPasswordReq, User } from '../types/api'
 import { get, post } from './request'
 
 /**
@@ -22,4 +22,14 @@ export function fetchMe(): Promise<User> {
  */
 export function register(req: RegisterReq): Promise<User> {
   return post<User>('/auth/register', req)
+}
+
+/** POST /api/auth/forgot-password —— 用户名+邮箱同时匹配才发信；响应永远是同一句成功提示 */
+export function forgotPassword(req: ForgotPasswordReq): Promise<void> {
+  return post<void>('/auth/forgot-password', req)
+}
+
+/** POST /api/auth/reset-password —— 用邮件里的一次性 token 换新密码（成功后旧会话全部失效） */
+export function resetPassword(req: ResetPasswordReq): Promise<void> {
+  return post<void>('/auth/reset-password', req)
 }

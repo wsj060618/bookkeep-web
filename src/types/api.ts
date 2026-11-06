@@ -60,6 +60,19 @@ export interface ShareLink {
   expiresAt: string
 }
 
+/** POST /api/auth/forgot-password —— 用户名 + 邮箱必须同时匹配；返回永远成功 */
+export interface ForgotPasswordReq {
+  username: string
+  email: string
+}
+
+/** POST /api/auth/reset-password —— 邮件里的一次性 token，15 分钟有效 */
+export interface ResetPasswordReq {
+  token: string
+  /** 6–32 位 */
+  newPassword: string
+}
+
 /** PUT /api/users/me —— 只改昵称/邮箱；传空串等于清空 */
 export interface UserUpdateReq {
   nickname?: string
@@ -105,8 +118,8 @@ export interface RegisterReq {
   password: string
   /** 可空，后端默认取用户名 */
   nickname?: string | null
-  /** 可空，仅展示用（不发验证邮件，也不能靠它找回密码） */
-  email?: string | null
+  /** 必填：找回密码的唯一通道 */
+  email: string
   /** 可空，后端默认「班级账本」 */
   bookName?: string | null
 }
