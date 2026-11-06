@@ -104,6 +104,16 @@ async function onLogout(): Promise<void> {
   await router.replace({ name: 'login' })
 }
 
+async function onUserCommand(command: string): Promise<void> {
+  if (command === 'settings') {
+    await router.push({ name: 'settings' })
+    return
+  }
+  if (command === 'logout') {
+    await onLogout()
+  }
+}
+
 /** 窄屏汉堡菜单 */
 const drawerVisible = ref(false)
 watch(
@@ -165,6 +175,14 @@ onMounted(async () => {
         >
           <span class="nav-icon">📚</span><span class="label">账本</span>
         </RouterLink>
+        <RouterLink
+          to="/settings"
+          class="nav-item"
+          :class="{ active: route.path === '/settings' }"
+          title="设置"
+        >
+          <span class="nav-icon">⚙️</span><span class="label">设置</span>
+        </RouterLink>
       </nav>
 
       <el-button class="new-btn" type="primary" @click="openCreate">
@@ -198,8 +216,15 @@ onMounted(async () => {
 
         <div class="tb-right">
           <el-button text type="primary" :loading="shareLoading" @click="openShare">分享</el-button>
-          <span class="tb-user">{{ auth.user?.nickname || auth.user?.username }}</span>
-          <el-button text @click="onLogout">退出</el-button>
+          <el-dropdown trigger="click" @command="onUserCommand">
+            <span class="tb-user">{{ auth.user?.nickname || auth.user?.username }} ▾</span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="settings">账号设置</el-dropdown-item>
+                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </header>
 
@@ -223,6 +248,10 @@ onMounted(async () => {
         <RouterLink to="/books" class="nav-item" :class="{ active: route.path === '/books' }">
           <span class="nav-icon">📚</span><span>账本</span>
         </RouterLink>
+        <RouterLink to="/settings" class="nav-item" :class="{ active: route.path === '/settings' }">
+          <span class="nav-icon">⚙️</span><span>设置</span>
+        </RouterLink>
+        <el-button class="drawer-logout" text type="danger" @click="onLogout">退出登录</el-button>
       </nav>
     </el-drawer>
 
@@ -365,6 +394,7 @@ onMounted(async () => {
 .tb-user {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+  cursor: pointer;
 }
 
 .hamburger {

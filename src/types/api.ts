@@ -60,6 +60,24 @@ export interface ShareLink {
   expiresAt: string
 }
 
+/** PUT /api/users/me —— 只改昵称/邮箱；传空串等于清空 */
+export interface UserUpdateReq {
+  nickname?: string
+  email?: string
+}
+
+/** PUT /api/users/me/password —— 必须带旧密码；成功后所有旧 token 失效 */
+export interface PasswordUpdateReq {
+  oldPassword: string
+  /** 6–32 位 */
+  newPassword: string
+}
+
+/** DELETE /api/users/me —— 密码二次确认 */
+export interface AccountDeleteReq {
+  password: string
+}
+
 /** 账本改名 / 新建的请求体，对应后端 BookUpdateReq（都只有 name 一个字段） */
 export interface BookUpdateReq {
   /** ≤50 字，不能全空格 */

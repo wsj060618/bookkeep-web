@@ -41,7 +41,8 @@ npm run preview      # 预览 dist 产物
   ├─ ''            → 重定向到 /transactions（默认页）
   ├─ transactions  TransactionsView     流水：筛选 / 分页 / 导出 / 改删
   ├─ stats         StatsView            统计：按月收支 + 支出分类占比
-  └─ books         BooksView            账本：新建 / 改名 / 切换 / 回收站
+  ├─ books         BooksView            账本：新建 / 改名 / 切换 / 回收站
+  └─ settings      SettingsView         账号设置：资料 / 改密码 / 注销
 /report/:token     PublicReportView     免登录公示页（不套布局）
 ```
 

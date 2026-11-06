@@ -52,6 +52,11 @@ const router = createRouter({
           name: 'books',
           component: () => import('../views/BooksView.vue'),
         },
+        {
+          path: 'settings',
+          name: 'settings',
+          component: () => import('../views/SettingsView.vue'),
+        },
       ],
     },
     // 只读公示页：免登录（后端 /api/public/report/** 是唯一匿名放行的接口）

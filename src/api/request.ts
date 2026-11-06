@@ -92,8 +92,9 @@ export async function put<T>(url: string, body?: unknown): Promise<T> {
   return response.data.data
 }
 
-export async function del<T>(url: string): Promise<T> {
-  const response = await http.delete<ApiResult<T>>(url)
+export async function del<T>(url: string, body?: unknown): Promise<T> {
+  // DELETE 也能带请求体（axios 用 config.data 传），注销账户需要它
+  const response = await http.delete<ApiResult<T>>(url, body === undefined ? undefined : { data: body })
   return response.data.data
 }
 
