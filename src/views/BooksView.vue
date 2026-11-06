@@ -6,6 +6,7 @@ import {
   deleteBook,
   listBooks,
   listTrash,
+  purgeBook,
   renameBook,
   restoreBook,
   switchBook,
@@ -144,6 +145,30 @@ async function onRestore(item: BookTrash): Promise<void> {
   }
 }
 
+/** 立即彻底删除：不可恢复，所以文案要把后果说全，并再确认一次 */
+async function onPurge(item: BookTrash): Promise<void> {
+  if (busy.value) return
+  const confirmed = await ElMessageBox.confirm(
+    `「${item.name}」会立刻连同全部分类与流水被彻底删除，**无法恢复**（不用等到 15 天后）。确定吗？`,
+    '彻底删除账本',
+    { type: 'error', confirmButtonText: '彻底删除', cancelButtonText: '取消' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (!confirmed) return
+
+  busy.value = true
+  try {
+    await purgeBook(item.id)
+    await load()
+    ElMessage.success(`「${item.name}」已彻底删除`)
+  } catch {
+    // 同上
+  } finally {
+    busy.value = false
+  }
+}
+
 onMounted(() => {
   void load()
 })
@@ -218,6 +243,7 @@ onMounted(() => {
               {{ item.deletedAt.slice(0, 10) }} 删除 · 还剩 {{ daysLeft(item.expireAt) }} 天
             </span>
             <el-button text size="small" type="primary" @click="onRestore(item)">恢复</el-button>
+            <el-button text size="small" type="danger" @click="onPurge(item)">彻底删除</el-button>
           </div>
         </div>
 

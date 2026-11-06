@@ -38,6 +38,11 @@ export function restoreBook(id: number): Promise<Book> {
   return put<Book>(`/books/${id}/restore`)
 }
 
+/** DELETE /api/books/{id}/permanent —— 立即彻底删除（只能删回收站里的，不可恢复） */
+export function purgeBook(id: number): Promise<void> {
+  return del<void>(`/books/${id}/permanent`)
+}
+
 /** POST /api/books/{id}/share —— 每次调用都换新 token（3 天有效），旧链接立即失效 */
 export function createShareLink(id: number): Promise<ShareLink> {
   return post<ShareLink>(`/books/${id}/share`)
