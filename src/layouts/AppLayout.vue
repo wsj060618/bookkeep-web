@@ -6,7 +6,6 @@ import { createShareLink, listBooks, switchBook } from '../api/book'
 import { listCategories } from '../api/category'
 import { useAuthStore } from '../stores/auth'
 import { SHELL_KEY, type ShellApi } from '../composables/shell'
-import { copyText } from '../utils/clipboard'
 import TransactionFormDialog from '../components/TransactionFormDialog.vue'
 import type { Category, Transaction } from '../types/api'
 
@@ -55,6 +54,8 @@ const shareVisible = ref(false)
 const shareLoading = ref(false)
 const shareLink = ref('')
 const shareExpiresAt = ref('')
+/** 弹窗里那个只读输入框：局域网 http 下复制要选中它再 execCommand */
+const shareInputRef = ref<{ input?: HTMLInputElement } | null>(null)
 
 /** 点「分享」→ 重新生成一条 3 天有效的新链接，旧链接同时作废 */
 async function openShare(): Promise<void> {
@@ -76,11 +77,38 @@ async function openShare(): Promise<void> {
 
 async function copyShareLink(): Promise<void> {
   if (!shareLink.value) return
-  const ok = await copyText(shareLink.value)
+  const text = shareLink.value
+
+  // 1) 安全上下文（https / localhost）直接用标准 API
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text)
+      ElMessage.success('链接已复制')
+      return
+    } catch {
+      // 有 API 但被拒：继续走兜底
+    }
+  }
+
+  // 2) 局域网 http：没有 clipboard API，只能选中**弹窗里那个真实可见的输入框**再 execCommand。
+  //    不能用隐藏的 textarea：安卓/iOS 对不可见元素、以及 contentEditable 的选区行为不一致，
+  //    会出现「提示复制成功，粘出来却是别的内容 / 打不开」的问题。
+  const input = shareInputRef.value?.input
+  if (input) {
+    input.focus()
+    input.select()
+    input.setSelectionRange(0, text.length)
+  }
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
   if (ok) {
     ElMessage.success('链接已复制')
   } else {
-    ElMessage.warning('这个浏览器不允许自动复制，请长按链接手动选中')
+    ElMessage.warning('浏览器不允许自动复制，请长按上面的链接手动选中')
   }
 }
 
@@ -270,7 +298,7 @@ onMounted(async () => {
       <p class="share-tip">
         任何人打开这个链接都能看到本月收支，<strong>不需要登录</strong>，页面上没有你的用户名和邮箱。
       </p>
-      <el-input :model-value="shareLink" readonly>
+      <el-input ref="shareInputRef" :model-value="shareLink" readonly @focus="($event.target as HTMLInputElement).select()">
         <template #append>
           <el-button @click="copyShareLink">复制</el-button>
         </template>
