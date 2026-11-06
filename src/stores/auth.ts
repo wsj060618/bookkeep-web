@@ -22,8 +22,8 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => token.value !== null)
 
   /** 登录成功后立刻拿到 user/books，不用再请求一次 /me */
-  async function login(username: string, password: string): Promise<LoginResp> {
-    const resp = await loginApi(username, password)
+  async function login(email: string, password: string): Promise<LoginResp> {
+    const resp = await loginApi(email, password)
     token.value = resp.token
     setToken(resp.token)
     user.value = resp.user

@@ -16,26 +16,42 @@ const auth = useAuthStore()
 /* ---------- 资料 ---------- */
 
 const profileForm = reactive({
-  nickname: auth.user?.nickname ?? '',
+  username: auth.user?.username ?? '',
   email: auth.user?.email ?? '',
+  password: '',
 })
 const profileSaving = ref(false)
 
 async function onSaveProfile(): Promise<void> {
   if (profileSaving.value) return
+  const username = profileForm.username.trim()
   const email = profileForm.email.trim()
+  if (!/^[a-zA-Z0-9_]{4,20}$/.test(username)) {
+    ElMessage.warning('用户名需 4–20 位字母、数字或下划线')
+    return
+  }
   if (!email) {
-    ElMessage.warning('邮箱不能为空（找回密码要用）')
+    ElMessage.warning('邮箱不能为空')
     return
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     ElMessage.warning('邮箱格式不正确')
     return
   }
+  const emailChanged = email.toLowerCase() !== (auth.user?.email ?? '').toLowerCase()
+  if (emailChanged && !profileForm.password) {
+    ElMessage.warning('改邮箱需要输入当前密码')
+    return
+  }
   profileSaving.value = true
   try {
-    await updateProfile({ nickname: profileForm.nickname.trim(), email })
-    await auth.loadMe() // 顶栏昵称立即变
+    await updateProfile({
+      username,
+      email,
+      password: emailChanged ? profileForm.password : undefined,
+    })
+    profileForm.password = ''
+    await auth.loadMe() // 顶栏名字立即变
     ElMessage.success('资料已更新')
   } catch {
     // 校验/网络错误已由 request.ts 弹过
@@ -130,17 +146,26 @@ async function onDeleteAccount(): Promise<void> {
   <div class="settings-page">
     <div class="page-head">
       <h2 class="page-title">账号设置</h2>
-      <p class="page-desc">用户名不可修改（它是登录凭据），其余资料随时可改。</p>
+      <p class="page-desc">用户名只是显示名，可随时修改；邮箱是登录凭据，改它需要输入当前密码。</p>
     </div>
 
     <section class="card">
       <h3 class="card-title">资料</h3>
       <el-form label-position="top" @submit.prevent>
-        <el-form-item label="昵称">
-          <el-input v-model="profileForm.nickname" maxlength="50" placeholder="留空则显示用户名" />
+        <el-form-item label="用户名（显示名）">
+          <el-input v-model="profileForm.username" maxlength="20" placeholder="4–20 位字母、数字或下划线" />
         </el-form-item>
-        <el-form-item label="邮箱（找回密码要用，必填）">
+        <el-form-item label="登录邮箱">
           <el-input v-model="profileForm.email" maxlength="100" placeholder="name@example.com" />
+        </el-form-item>
+        <el-form-item label="当前密码（仅改邮箱时需要）">
+          <el-input
+            v-model="profileForm.password"
+            type="password"
+            show-password
+            autocomplete="current-password"
+            placeholder="不改邮箱可以留空"
+          />
         </el-form-item>
         <el-button type="primary" :loading="profileSaving" @click="onSaveProfile">保存资料</el-button>
       </el-form>

@@ -18,13 +18,16 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 
 const form = reactive({
-  // 注册页「用户名已存在」时会带 query 跳过来，省得再输一遍
-  username: String(route.query.username ?? ''),
+  // 注册页「邮箱已注册」时会带 query 跳过来，省得再输一遍
+  email: String(route.query.email ?? ''),
   password: '',
 })
 
 const rules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
+  ],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
@@ -38,11 +41,11 @@ async function onSubmit(): Promise<void> {
   if (submitting.value) return
   submitting.value = true
   try {
-    const resp = await auth.login(form.username, form.password)
+    const resp = await auth.login(form.email, form.password)
     // 登录响应里已经带了 user，这里再请求一次 /me 是**故意的**：
     // 第 0 步要验收的是「token 真的能带在后续请求上」，而不是「页面能显示名字」
     await auth.loadMe()
-    ElMessage.success(`欢迎回来，${resp.user.nickname || resp.user.username}`)
+    ElMessage.success(`欢迎回来，${resp.user.username}`)
     await router.push({ name: 'transactions' })
   } catch {
     // 失败提示已由 axios 拦截器统一弹出（密码错误 / 网络异常 / 401），
@@ -68,11 +71,11 @@ async function onSubmit(): Promise<void> {
         label-position="top"
         @submit.prevent="onSubmit"
       >
-        <el-form-item label="用户名" prop="username">
+        <el-form-item label="邮箱" prop="email">
           <el-input
-            v-model="form.username"
-            placeholder="字母、数字、下划线，区分大小写"
-            autocomplete="username"
+            v-model="form.email"
+            placeholder="注册时填的邮箱"
+            autocomplete="email"
             clearable
           />
         </el-form-item>

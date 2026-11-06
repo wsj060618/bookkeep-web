@@ -23,7 +23,6 @@ const form = reactive({
   username: '',
   password: '',
   confirmPassword: '',
-  nickname: '',
   email: '',
   bookName: '班级账本',
 })
@@ -50,7 +49,6 @@ const rules: FormRules = {
     { required: true, message: '请再次输入密码', trigger: 'blur' },
     { validator: validateConfirm, trigger: 'blur' },
   ],
-  nickname: [{ max: 50, message: '昵称不能超过 50 个字', trigger: 'blur' }],
   email: [
     { required: true, message: '请输入邮箱（找回密码要用）', trigger: 'blur' },
     { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
@@ -69,7 +67,7 @@ function validateFields(fields: string[]): Promise<boolean> {
 }
 
 async function next(): Promise<void> {
-  const valid = await validateFields(['username', 'password', 'confirmPassword', 'nickname', 'email'])
+  const valid = await validateFields(['username', 'password', 'confirmPassword', 'email'])
   if (!valid) return
   step.value = 1
 }
@@ -84,32 +82,32 @@ async function onSubmit(): Promise<void> {
   submitting.value = true
 
   const username = form.username.trim()
+  const email = form.email.trim()
   const password = form.password
   try {
     await register({
       username,
       password,
-      nickname: form.nickname.trim() || null,
+      email,
       bookName: form.bookName.trim(),
-      email: form.email.trim(),
     })
-    // 注册成功但没 token：立刻用同一组账号密码登录
-    await auth.login(username, password)
+    // 注册成功但没 token：立刻用同一组凭据登录（登录凭据是邮箱）
+    await auth.login(email, password)
     ElMessage.success('注册成功，已为你建好账本')
     await router.push({ name: 'transactions' })
   } catch (error) {
-    // 拦截器已经弹过错误提示，这里只处理「用户名已存在」这种情况的下一步引导
+    // 拦截器已经弹过错误提示，这里只处理「用户名/邮箱已存在」这种情况的下一步引导
     const message = error instanceof Error ? error.message : ''
-    if (message.includes('用户名已存在')) {
+    if (message.includes('用户名已存在') || message.includes('邮箱已被注册')) {
       const goLogin = await ElMessageBox.confirm(
-        '这个用户名已经注册过了。如果刚才是你点的注册，直接去登录即可。',
-        '用户名已被占用',
-        { confirmButtonText: '去登录', cancelButtonText: '改个名字', type: 'info' },
+        '这个用户名或邮箱已经注册过了。如果刚才是你点的注册，直接去登录即可。',
+        '已被占用',
+        { confirmButtonText: '去登录', cancelButtonText: '改一下', type: 'info' },
       )
         .then(() => true)
         .catch(() => false)
       if (goLogin) {
-        await router.push({ name: 'login', query: { username } })
+        await router.push({ name: 'login', query: { email } })
       }
     }
   } finally {
@@ -170,12 +168,8 @@ async function onSubmit(): Promise<void> {
             />
           </el-form-item>
 
-          <el-form-item label="昵称（可不填）" prop="nickname">
-            <el-input v-model="form.nickname" placeholder="默认与用户名相同" clearable />
-          </el-form-item>
-
           <el-form-item label="邮箱" prop="email">
-            <el-input v-model="form.email" placeholder="找回密码要用，请填常用邮箱" clearable />
+            <el-input v-model="form.email" placeholder="登录用，也是找回密码的通道" clearable />
           </el-form-item>
 
           <el-button type="primary" size="large" class="register-submit" @click="next">

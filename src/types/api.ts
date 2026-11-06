@@ -32,8 +32,7 @@ export interface PageResult<T> {
 export interface User {
   id: number
   username: string
-  nickname: string | null
-  email: string | null
+  email: string
   avatar: string | null
   currentBookId: number | null
 }
@@ -60,9 +59,8 @@ export interface ShareLink {
   expiresAt: string
 }
 
-/** POST /api/auth/forgot-password —— 用户名 + 邮箱必须同时匹配；返回永远成功 */
+/** POST /api/auth/forgot-password —— 只填邮箱（邮箱是登录凭据且唯一）；返回永远成功 */
 export interface ForgotPasswordReq {
-  username: string
   email: string
 }
 
@@ -73,10 +71,12 @@ export interface ResetPasswordReq {
   newPassword: string
 }
 
-/** PUT /api/users/me —— 只改昵称/邮箱；传空串等于清空 */
+/** PUT /api/users/me —— 改用户名 / 登录邮箱；**改邮箱时必须带当前密码** */
 export interface UserUpdateReq {
-  nickname?: string
-  email?: string
+  username: string
+  email: string
+  /** 仅当 email 与当前值不同时必填 */
+  password?: string
 }
 
 /** PUT /api/users/me/password —— 必须带旧密码；成功后所有旧 token 失效 */
@@ -112,13 +112,11 @@ export interface BookTrash {
  * 注册成功即建账本 + 预置 13 条分类（后端事务内完成）。
  */
 export interface RegisterReq {
-  /** 4–20 位字母/数字/下划线，区分大小写（Tom 和 tom 是两个账号） */
+  /** 显示名（不是登录凭据）：4–20 位字母/数字/下划线，区分大小写 */
   username: string
   /** 6–32 位明文，后端 BCrypt 加密后落库 */
   password: string
-  /** 可空，后端默认取用户名 */
-  nickname?: string | null
-  /** 必填：找回密码的唯一通道 */
+  /** 登录凭据：必填且唯一 */
   email: string
   /** 可空，后端默认「班级账本」 */
   bookName?: string | null

@@ -7,8 +7,8 @@ import { get, post } from './request'
  */
 
 /** POST /api/auth/login → {token, user, books}（books 与 user 平级） */
-export function login(username: string, password: string): Promise<LoginResp> {
-  return post<LoginResp>('/auth/login', { username, password })
+export function login(email: string, password: string): Promise<LoginResp> {
+  return post<LoginResp>('/auth/login', { email, password })
 }
 
 /** GET /api/auth/me → UserResp（不带 token 会得到真实 HTTP 401） */

@@ -219,7 +219,7 @@ onMounted(async () => {
         <div class="tb-right">
           <el-button text type="primary" :loading="shareLoading" @click="openShare">分享</el-button>
           <el-dropdown trigger="click" @command="onUserCommand">
-            <span class="tb-user">{{ auth.user?.nickname || auth.user?.username }} ▾</span>
+            <span class="tb-user">{{ auth.user?.username }} ▾</span>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="settings">账号设置</el-dropdown-item>

@@ -12,10 +12,9 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const submitted = ref(false)
 
-const form = reactive({ username: '', email: '' })
+const form = reactive({ email: '' })
 
 const rules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   email: [
     { required: true, message: '请输入注册时填的邮箱', trigger: 'blur' },
     { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
@@ -29,9 +28,9 @@ async function onSubmit(): Promise<void> {
 
   submitting.value = true
   try {
-    await forgotPassword({ username: form.username.trim(), email: form.email.trim() })
+    await forgotPassword({ email: form.email.trim() })
     submitted.value = true
-    ElMessage.success('如果账号信息匹配，重置邮件已经发出')
+    ElMessage.success('如果该邮箱已注册，重置邮件已经发出')
   } catch {
     // 网络错误由 request.ts 提示；业务错误理论上不会出现（接口永远 200）
   } finally {
@@ -45,14 +44,11 @@ async function onSubmit(): Promise<void> {
     <el-card class="auth-card" shadow="always">
       <div class="auth-head">
         <h1 class="auth-title">忘记密码</h1>
-        <p class="auth-subtitle">用注册时填的用户名和邮箱申请重置链接</p>
+        <p class="auth-subtitle">用注册时填的邮箱申请重置链接（邮箱就是登录名）</p>
       </div>
 
       <template v-if="!submitted">
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent>
-          <el-form-item label="用户名" prop="username">
-            <el-input v-model="form.username" placeholder="区分大小写" clearable />
-          </el-form-item>
           <el-form-item label="注册邮箱" prop="email">
             <el-input v-model="form.email" placeholder="name@example.com" clearable @keyup.enter="onSubmit" />
           </el-form-item>
@@ -65,7 +61,7 @@ async function onSubmit(): Promise<void> {
       <el-result v-else icon="success" title="邮件已发送">
         <template #sub-title>
           <p class="auth-tip">
-            如果账号信息匹配，我们已经把重置链接发到那个邮箱。<br />
+            如果该邮箱已注册，我们已经把重置链接发到那个邮箱。<br />
             链接 15 分钟内有效、只能用一次；没收到就检查垃圾邮件，或稍后重新申请。
           </p>
         </template>
