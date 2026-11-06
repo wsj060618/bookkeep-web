@@ -19,6 +19,8 @@ import type { Category, Transaction } from '../types/api'
 
 const route = useRoute()
 const router = useRouter()
+/** 「记一笔」只在流水页出现：统计/账本/设置页不提供入口，避免误以为在哪都能记 */
+const onTransactions = computed(() => route.name === 'transactions')
 const auth = useAuthStore()
 
 const currentBook = computed(() => auth.books.find((b) => b.current) ?? auth.books[0] ?? null)
@@ -185,7 +187,7 @@ onMounted(async () => {
         </RouterLink>
       </nav>
 
-      <el-button class="new-btn" type="primary" @click="openCreate">
+      <el-button v-if="onTransactions" class="new-btn" type="primary" @click="openCreate">
         <span class="nav-icon">＋</span><span class="label">记一笔</span>
       </el-button>
     </aside>
@@ -255,7 +257,7 @@ onMounted(async () => {
       </nav>
     </el-drawer>
 
-    <el-button class="fab" type="primary" @click="openCreate">＋ 记一笔</el-button>
+    <el-button v-if="onTransactions" class="fab" type="primary" @click="openCreate">＋ 记一笔</el-button>
 
     <TransactionFormDialog
       v-model="formVisible"
