@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { register } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
-import { emailFormatRule } from '../utils/validate'
+import { emailFormatRule, passwordRule } from '../utils/validate'
 
 /**
  * 注册向导：第一步账号，第二步给账本起名，最后一次性提交。
@@ -47,7 +47,7 @@ const rules: FormRules = {
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 32, message: '密码长度为 6–32 位', trigger: 'blur' },
+    passwordRule,
   ],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' },
@@ -156,7 +156,7 @@ async function onSubmit(): Promise<void> {
             <el-input
               v-model="form.password"
               type="password"
-              placeholder="6–32 位"
+              placeholder="6–32 位字母、数字或下划线"
               autocomplete="new-password"
               show-password
             />

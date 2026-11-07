@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { resetPassword } from '../api/auth'
+import { passwordRule } from '../utils/validate'
 
 /**
  * 重置密码：token 来自邮件链接的 query。
@@ -22,7 +23,7 @@ const form = reactive({ newPassword: '', confirmPassword: '' })
 const rules: FormRules = {
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, max: 32, message: '密码长度需 6–32 位', trigger: 'blur' },
+    passwordRule,
   ],
   confirmPassword: [
     { required: true, message: '请再输入一次', trigger: 'blur' },
@@ -78,7 +79,13 @@ async function onSubmit(): Promise<void> {
       <template v-else-if="!done">
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent>
           <el-form-item label="新密码" prop="newPassword">
-            <el-input v-model="form.newPassword" type="password" show-password autocomplete="new-password" />
+            <el-input
+              v-model="form.newPassword"
+              type="password"
+              show-password
+              autocomplete="new-password"
+              placeholder="6–32 位字母、数字或下划线"
+            />
           </el-form-item>
           <el-form-item label="确认新密码" prop="confirmPassword">
             <el-input

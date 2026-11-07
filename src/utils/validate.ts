@@ -20,3 +20,20 @@ export const emailFormatRule: FormItemRule = {
   },
   trigger: 'blur',
 }
+
+/**
+ * 密码的唯一口径，必须和后端 `PasswordRules.PATTERN` 保持一致。
+ * 只用于**设置新密码**（注册 / 改密码 / 重置密码）；登录用的是旧密码，不受这条限制。
+ */
+export const PASSWORD_PATTERN = /^[A-Za-z0-9_]{6,32}$/
+
+export const PASSWORD_MESSAGE = '密码需 6–32 位字母、数字或下划线'
+
+/** 新密码规则；空值交给 required 规则 */
+export const passwordRule: FormItemRule = {
+  validator: (_rule, value: string, callback) => {
+    const v = value ?? ''
+    callback(!v || PASSWORD_PATTERN.test(v) ? undefined : new Error(PASSWORD_MESSAGE))
+  },
+  trigger: 'blur',
+}

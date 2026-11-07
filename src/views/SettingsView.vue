@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { deleteAccount, updatePassword, updateProfile } from '../api/user'
 import { useAuthStore } from '../stores/auth'
-import { isEmail } from '../utils/validate'
+import { isEmail, passwordRule } from '../utils/validate'
 
 /**
  * 账号设置：资料 / 改密码 / 注销。
@@ -106,7 +106,7 @@ const pwdRules: FormRules = {
   oldPassword: [{ required: true, message: '请输入旧密码', trigger: 'blur' }],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, max: 32, message: '密码长度需 6–32 位', trigger: 'blur' },
+    passwordRule,
   ],
   confirmPassword: [
     { required: true, message: '请再输入一次新密码', trigger: 'blur' },
@@ -201,7 +201,13 @@ async function confirmDelete(): Promise<void> {
           <el-input v-model="pwdForm.oldPassword" type="password" show-password autocomplete="current-password" />
         </el-form-item>
         <el-form-item label="新密码" prop="newPassword">
-          <el-input v-model="pwdForm.newPassword" type="password" show-password autocomplete="new-password" />
+          <el-input
+            v-model="pwdForm.newPassword"
+            type="password"
+            show-password
+            autocomplete="new-password"
+            placeholder="6–32 位字母、数字或下划线"
+          />
         </el-form-item>
         <el-form-item label="确认新密码" prop="confirmPassword">
           <el-input v-model="pwdForm.confirmPassword" type="password" show-password autocomplete="new-password" />
