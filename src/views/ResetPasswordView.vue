@@ -84,7 +84,7 @@ async function onSubmit(): Promise<void> {
               type="password"
               show-password
               autocomplete="new-password"
-              placeholder="6–32 位字母、数字或下划线"
+              placeholder="6–32 位，字母/数字/下划线至少两种"
             />
           </el-form-item>
           <el-form-item label="确认新密码" prop="confirmPassword">

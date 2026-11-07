@@ -22,12 +22,13 @@ export const emailFormatRule: FormItemRule = {
 }
 
 /**
- * 密码的唯一口径，必须和后端 `PasswordRules.PATTERN` 保持一致。
+ * 密码的唯一口径，必须和后端 `PasswordRules.PATTERN` 保持一致：
+ * 6–32 位，字母 / 数字 / 下划线**至少含两种**（纯数字、纯字母都算弱口令）。
  * 只用于**设置新密码**（注册 / 改密码 / 重置密码）；登录用的是旧密码，不受这条限制。
  */
-export const PASSWORD_PATTERN = /^[A-Za-z0-9_]{6,32}$/
+export const PASSWORD_PATTERN = /^(?![A-Za-z]{6,32}$)(?![0-9]{6,32}$)(?![_]{6,32}$)[A-Za-z0-9_]{6,32}$/
 
-export const PASSWORD_MESSAGE = '密码需 6–32 位字母、数字或下划线'
+export const PASSWORD_MESSAGE = '密码需 6–32 位，字母/数字/下划线至少含两种'
 
 /** 新密码规则；空值交给 required 规则 */
 export const passwordRule: FormItemRule = {

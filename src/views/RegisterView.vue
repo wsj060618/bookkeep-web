@@ -156,7 +156,7 @@ async function onSubmit(): Promise<void> {
             <el-input
               v-model="form.password"
               type="password"
-              placeholder="6–32 位字母、数字或下划线"
+              placeholder="6–32 位，字母/数字/下划线至少两种"
               autocomplete="new-password"
               show-password
             />
