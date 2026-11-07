@@ -20,8 +20,9 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const step = ref(0)
 
-/** 用户名合法形状：4–20 位字母/数字/下划线（后端 user.username 大小写敏感） */
-const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/
+/** 用户名合法形状：2–20 位中文/字母/数字/下划线（后端 UsernameRules 同一条规则） */
+const USERNAME_RE = /^[\p{Script=Han}A-Za-z0-9_]{2,20}$/u
+const USERNAME_MESSAGE = '用户名需 2–20 位中文、字母、数字或下划线'
 
 const form = reactive({
   username: '',
@@ -45,7 +46,7 @@ const rules: FormRules = {
     {
       validator: (_rule, value: string, callback) => {
         const v = (value ?? '').trim()
-        callback(USERNAME_RE.test(v) ? undefined : new Error('用户名长度 4–20 位'))
+        callback(USERNAME_RE.test(v) ? undefined : new Error(USERNAME_MESSAGE))
       },
       trigger: 'blur',
     },
@@ -150,7 +151,8 @@ async function onSubmit(): Promise<void> {
           <el-form-item label="用户名" prop="username">
             <el-input
               v-model="form.username"
-              placeholder="4–20 位字母、数字或下划线"
+              placeholder="2–20 位中文、字母、数字或下划线"
+              maxlength="20"
               autocomplete="username"
               clearable
             />

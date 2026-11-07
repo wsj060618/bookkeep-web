@@ -15,7 +15,7 @@ import { isEmail } from '../utils/validate'
 const router = useRouter()
 const auth = useAuthStore()
 
-const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/
+const USERNAME_RE = /^[\p{Script=Han}A-Za-z0-9_]{2,20}$/u
 
 /* ---------- 资料 ---------- */
 
@@ -49,7 +49,7 @@ function openProfileDialog(): void {
   const username = profileForm.username.trim()
   const email = profileForm.email.trim()
   if (!USERNAME_RE.test(username)) {
-    ElMessage.warning('用户名需 4–20 位字母、数字或下划线')
+    ElMessage.warning('用户名需 2–20 位中文、字母、数字或下划线')
     return
   }
   if (!email) {
@@ -176,7 +176,7 @@ async function confirmDelete(): Promise<void> {
       <h3 class="card-title">资料</h3>
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="用户名（显示名）">
-          <el-input v-model="profileForm.username" maxlength="20" placeholder="4–20 位字母、数字或下划线" />
+          <el-input v-model="profileForm.username" maxlength="20" placeholder="2–20 位中文、字母、数字或下划线" />
         </el-form-item>
         <el-form-item label="登录邮箱">
           <el-input v-model="profileForm.email" maxlength="100" placeholder="name@example.com" />
