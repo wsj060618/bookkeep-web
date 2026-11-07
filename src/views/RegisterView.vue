@@ -20,6 +20,9 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const step = ref(0)
 
+/** 用户名合法形状：4–20 位字母/数字/下划线（后端 user.username 大小写敏感） */
+const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/
+
 const form = reactive({
   username: '',
   password: '',
@@ -38,9 +41,14 @@ function validateConfirm(_rule: unknown, value: string, callback: (error?: Error
 
 const rules: FormRules = {
   username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 4, max: 20, message: '用户名长度为 4–20 位', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_]+$/, message: '只能包含字母、数字和下划线', trigger: 'blur' },
+    // 一条规则一条文案：分三条时「空 / 长度不够 / 有中文」会分别报不同的句子，用户看不出到底要改什么
+    {
+      validator: (_rule, value: string, callback) => {
+        const v = (value ?? '').trim()
+        callback(USERNAME_RE.test(v) ? undefined : new Error('用户名长度 4–20 位'))
+      },
+      trigger: 'blur',
+    },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -142,7 +150,7 @@ async function onSubmit(): Promise<void> {
           <el-form-item label="用户名" prop="username">
             <el-input
               v-model="form.username"
-              placeholder="4–20 位字母、数字或下划线，区分大小写"
+              placeholder="4–20 位字母、数字或下划线"
               autocomplete="username"
               clearable
             />
