@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { register } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
+import { emailFormatRule } from '../utils/validate'
 
 /**
  * 注册向导：第一步账号，第二步给账本起名，最后一次性提交。
@@ -51,7 +52,7 @@ const rules: FormRules = {
   ],
   email: [
     { required: true, message: '请输入邮箱（找回密码要用）', trigger: 'blur' },
-    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
+    emailFormatRule,
   ],
   bookName: [
     { required: true, message: '给账本起个名字', trigger: 'blur' },

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { deleteAccount, updatePassword, updateProfile } from '../api/user'
 import { useAuthStore } from '../stores/auth'
+import { isEmail } from '../utils/validate'
 
 /**
  * 账号设置：资料 / 改密码 / 注销。
@@ -15,7 +16,6 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 /* ---------- 资料 ---------- */
 
@@ -56,7 +56,7 @@ function openProfileDialog(): void {
     ElMessage.warning('邮箱不能为空')
     return
   }
-  if (!EMAIL_RE.test(email)) {
+  if (!isEmail(email)) {
     ElMessage.warning('邮箱格式不正确')
     return
   }

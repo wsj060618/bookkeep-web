@@ -2,6 +2,7 @@
 import { reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { forgotPassword } from '../api/auth'
+import { emailFormatRule } from '../utils/validate'
 
 /**
  * 忘记密码：用户名 + 邮箱同时匹配才会发信。
@@ -17,7 +18,7 @@ const form = reactive({ email: '' })
 const rules: FormRules = {
   email: [
     { required: true, message: '请输入注册时填的邮箱', trigger: 'blur' },
-    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
+    emailFormatRule,
   ],
 }
 

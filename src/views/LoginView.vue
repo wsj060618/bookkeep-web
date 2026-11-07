@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { emailFormatRule } from '../utils/validate'
 
 /**
  * 第 0 步唯一的页面：登录。
@@ -26,7 +27,7 @@ const form = reactive({
 const rules: FormRules = {
   email: [
     { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
+    emailFormatRule,
   ],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
