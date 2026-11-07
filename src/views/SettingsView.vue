@@ -15,7 +15,9 @@ import { isEmail } from '../utils/validate'
 const router = useRouter()
 const auth = useAuthStore()
 
-const USERNAME_RE = /^[\p{Script=Han}A-Za-z0-9_]{2,20}$/u
+/** 用户名只限长度，字符不设限（后端 UsernameRules 同一条规则） */
+const USERNAME_MAX = 20
+const USERNAME_MESSAGE = '用户名长度不能超过 20 位'
 
 /* ---------- 资料 ---------- */
 
@@ -44,12 +46,18 @@ const profileDialog = ref(false)
 const profilePassword = ref('')
 const profileSaving = ref(false)
 
-/** 点「保存资料」：先做格式校验，再弹确认框（改邮箱时才要密码） */
+/**
+ * 点「保存资料」：先做格式校验，再弹确认框（改邮箱时才要密码）
+ */
 function openProfileDialog(): void {
   const username = profileForm.username.trim()
   const email = profileForm.email.trim()
-  if (!USERNAME_RE.test(username)) {
-    ElMessage.warning('用户名需 2–20 位中文、字母、数字或下划线')
+  if (!username) {
+    ElMessage.warning('用户名不能为空')
+    return
+  }
+  if (username.length > USERNAME_MAX) {
+    ElMessage.warning(USERNAME_MESSAGE)
     return
   }
   if (!email) {
@@ -176,7 +184,7 @@ async function confirmDelete(): Promise<void> {
       <h3 class="card-title">资料</h3>
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="用户名（显示名）">
-          <el-input v-model="profileForm.username" maxlength="20" placeholder="2–20 位中文、字母、数字或下划线" />
+          <el-input v-model="profileForm.username" maxlength="20" placeholder="不超过 20 位" />
         </el-form-item>
         <el-form-item label="登录邮箱">
           <el-input v-model="profileForm.email" maxlength="100" placeholder="name@example.com" />
