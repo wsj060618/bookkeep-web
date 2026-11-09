@@ -45,7 +45,25 @@ function notifyTxChanged(): void {
   txVersion.value += 1
 }
 
-const shell: ShellApi = { categories, txVersion, openCreate, openEdit, notifyTxChanged }
+/** 分类以服务端为准：分类页增删改后也走这里，避免各页面各拉一份导致下拉与筛选不一致 */
+async function reloadCategories(): Promise<void> {
+  categories.value = await listCategories().catch(() => categories.value)
+}
+
+function onCategoryCreated(category: Category): void {
+  // 先插进缓存，弹窗要立刻选中新分类；随后再拉一次对齐后端顺序
+  categories.value = [...categories.value, category]
+  void reloadCategories()
+}
+
+const shell: ShellApi = {
+  categories,
+  txVersion,
+  openCreate,
+  openEdit,
+  notifyTxChanged,
+  reloadCategories,
+}
 provide(SHELL_KEY, shell)
 
 /* ---------- 分享 ---------- */
@@ -154,8 +172,8 @@ watch(
 )
 
 // 切账本 → 分类整套换掉，重拉一次给子页面的筛选/表单用
-watch(currentBookId, async () => {
-  categories.value = await listCategories().catch(() => [])
+watch(currentBookId, () => {
+  void reloadCategories()
 })
 
 onMounted(async () => {
@@ -168,7 +186,7 @@ onMounted(async () => {
   }
   // books 以服务端为准：localStorage 可能是旧数据（在别的设备上改过名或删过账本）
   auth.setBooks(await listBooks().catch(() => auth.books))
-  categories.value = await listCategories().catch(() => [])
+  await reloadCategories()
 })
 </script>
 
@@ -204,6 +222,14 @@ onMounted(async () => {
           title="账本"
         >
           <span class="nav-icon">📚</span><span class="label">账本</span>
+        </RouterLink>
+        <RouterLink
+          to="/categories"
+          class="nav-item"
+          :class="{ active: route.path === '/categories' }"
+          title="分类"
+        >
+          <span class="nav-icon">🏷</span><span class="label">分类</span>
         </RouterLink>
         <RouterLink
           to="/settings"
@@ -278,6 +304,13 @@ onMounted(async () => {
         <RouterLink to="/books" class="nav-item" :class="{ active: route.path === '/books' }">
           <span class="nav-icon">📚</span><span>账本</span>
         </RouterLink>
+        <RouterLink
+          to="/categories"
+          class="nav-item"
+          :class="{ active: route.path === '/categories' }"
+        >
+          <span class="nav-icon">🏷</span><span>分类</span>
+        </RouterLink>
         <RouterLink to="/settings" class="nav-item" :class="{ active: route.path === '/settings' }">
           <span class="nav-icon">⚙️</span><span>设置</span>
         </RouterLink>
@@ -292,6 +325,7 @@ onMounted(async () => {
       :categories="categories"
       :editing="editing"
       @saved="notifyTxChanged"
+      @category-created="onCategoryCreated"
     />
 
     <el-dialog v-model="shareVisible" title="分享给同学看" width="min(480px, 92vw)">

@@ -87,6 +87,14 @@ function onTypeChange(): void {
   onSearch()
 }
 
+/** 分类在别的页面被删掉后，筛选里那个 id 就不存在了，清掉再查，否则列表永远空白 */
+watch(shell.categories, () => {
+  if (filterCategoryId.value && !shell.categories.value.some((c) => c.id === filterCategoryId.value)) {
+    filterCategoryId.value = null
+    onSearch()
+  }
+})
+
 function onPageChange(value: number): void {
   page.value = value
   void loadList()

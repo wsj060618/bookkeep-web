@@ -15,6 +15,8 @@ export interface ShellApi {
   openCreate: () => void
   openEdit: (tx: Transaction) => void
   notifyTxChanged: () => void
+  /** 分类被增删改后重拉一次，让「记一笔」下拉与各页筛选同步 */
+  reloadCategories: () => Promise<void>
 }
 
 export const SHELL_KEY: InjectionKey<ShellApi> = Symbol('bookkeep-shell')
