@@ -42,6 +42,9 @@ function percentOf(index: number): string {
   return props.items[index] ? `${props.items[index].percent}%` : ''
 }
 
+/** 分类太多时（>8）不在扇区外挂名字，交给图例 + tooltip —— 否则标签会挤成一团 */
+const showSliceLabels = computed(() => props.type !== 'bar' && props.items.length <= 8)
+
 /** 柱状图分类名挤不挤：并排两栏又要放 6+ 个名字，超过 5 个就斜着写 */
 const rotateLabels = computed(() => props.items.length > 5)
 
@@ -107,52 +110,6 @@ function barOption(): EChartsCoreOption {
 
 function pieOption(): EChartsCoreOption {
   const donut = props.type === 'donut'
-  if (donut) {
-    // 环形图参照官方示例：图例在顶部居中，默认不显示标签，hover 时在圆心放大显示名字
-    return {
-      tooltip: {
-        trigger: 'item',
-        formatter: (params: unknown) => {
-          const p = params as { name: string; value: number; percent: number; marker: string }
-          return `${p.marker} ${p.name}<br/>${money(p.value)}（${p.percent}%）`
-        },
-      },
-      legend: {
-        type: 'scroll',
-        top: '5%',
-        left: 'center',
-        icon: 'circle',
-        itemWidth: 10,
-        itemHeight: 10,
-        itemGap: 12,
-        textStyle: { fontSize: 12, color: '#606266' },
-        pageIconSize: 10,
-        pageTextStyle: { color: '#909399', fontSize: 11 },
-      },
-      series: [
-        {
-          type: 'pie',
-          radius: ['40%', '70%'],
-          center: ['50%', '56%'],
-          avoidLabelOverlap: false,
-          itemStyle: { borderColor: '#fff', borderWidth: 2 },
-          label: { show: false, position: 'center' },
-          // 官方示例的圆心放大效果；字号按卡片尺寸收小，否则四个汉字会顶出圆心
-          emphasis: {
-            label: { show: true, fontSize: 18, fontWeight: 'bold', formatter: '{b}', color: '#303133' },
-          },
-          labelLine: { show: false },
-          data: props.items.map((item, index) => ({
-            name: item.categoryName,
-            value: Number(item.amount),
-            itemStyle: { color: palette.value[index] },
-          })),
-        },
-      ],
-    }
-  }
-
-  // 饼图参照官方示例：图例竖排在左侧，圆饼半径 50%，hover 时扇区带阴影
   return {
     tooltip: {
       trigger: 'item',
@@ -163,13 +120,11 @@ function pieOption(): EChartsCoreOption {
     },
     legend: {
       type: 'scroll',
-      orient: 'vertical',
-      left: 'left',
-      top: 'middle',
+      bottom: 0,
       icon: 'circle',
       itemWidth: 10,
       itemHeight: 10,
-      itemGap: 10,
+      itemGap: 12,
       textStyle: { fontSize: 12, color: '#606266' },
       pageIconSize: 10,
       pageTextStyle: { color: '#909399', fontSize: 11 },
@@ -177,17 +132,28 @@ function pieOption(): EChartsCoreOption {
     series: [
       {
         type: 'pie',
-        // 左侧留给图例，圆饼右移；半径按官方示例取 50%
-        radius: '50%',
-        center: ['62%', '50%'],
-        itemStyle: { borderColor: '#fff', borderWidth: 1 },
-        label: { show: true, formatter: '{b}', fontSize: 11, color: '#606266' },
-        labelLine: { length: 8, length2: 6, lineStyle: { color: '#dcdfe6' } },
-        // 名字多了自动隐藏重叠的那几个，不让两个名字贴在一起
-        labelLayout: { hideOverlap: true },
-        emphasis: {
-          itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' },
+        radius: donut ? ['44%', '66%'] : '62%',
+        center: ['50%', '42%'],
+        minAngle: 2,
+        avoidLabelOverlap: true,
+        itemStyle: { borderColor: '#fff', borderWidth: 2 },
+        label: {
+          show: showSliceLabels.value,
+          formatter: '{b}\n{d}%',
+          fontSize: 12,
+          lineHeight: 17,
+          color: '#606266',
         },
+        labelLine: {
+          show: showSliceLabels.value,
+          length: 10,
+          length2: 8,
+          smooth: true,
+          lineStyle: { color: '#dcdfe6' },
+        },
+        // 少量重叠时直接隐藏，不让两个名字贴在一起（官方示例的常规做法）
+        labelLayout: { hideOverlap: true },
+        emphasis: { scaleSize: 6 },
         data: props.items.map((item, index) => ({
           name: item.categoryName,
           value: Number(item.amount),
