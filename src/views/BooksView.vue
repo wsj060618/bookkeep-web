@@ -11,7 +11,8 @@ import {
   restoreBook,
   switchBook,
 } from '../api/book'
-import type { Book, BookTrash } from '../types/api'
+import { listTemplates } from '../api/template'
+import type { Book, BookTrash, CategoryTemplate } from '../types/api'
 import { useAuthStore } from '../stores/auth'
 
 /**
@@ -33,11 +34,46 @@ const newName = ref('')
 const renamingId = ref<number | null>(null)
 const renameValue = ref('')
 
+/* ---------- 新建时选分类模板 ---------- */
+
+/** 内置模板的虚拟 id（后端约定 0，不入库） */
+const BUILTIN_ID = 0
+
+const templates = ref<CategoryTemplate[]>([])
+const newTemplateId = ref<number>(BUILTIN_ID)
+const creating = ref(false)
+
+const currentBook = computed(() => books.value.find((b) => b.current) ?? null)
+
+function templateLabel(t: CategoryTemplate): string {
+  return t.builtin ? `${t.name}（内置）` : t.name
+}
+
+/**
+ * 默认选「当前账本正在用的那套」：多数人是给新学期再开一本、分类沿用；
+ * 下拉里看得见选的是哪套，不会偷偷改变含义。
+ */
+function syncDefaultTemplate(): void {
+  newTemplateId.value = currentBook.value?.categoryTemplateId ?? BUILTIN_ID
+}
+
+async function loadTemplates(): Promise<void> {
+  try {
+    templates.value = await listTemplates()
+  } catch {
+    // 拉不到模板不影响建账本：留空数组，后端收到省略的 templateId 就用内置
+  }
+  if (!templates.value.some((t) => t.id === newTemplateId.value)) {
+    newTemplateId.value = BUILTIN_ID
+  }
+}
+
 async function load(): Promise<void> {
   loading.value = true
   try {
     auth.setBooks(await listBooks())
     trash.value = await listTrash()
+    syncDefaultTemplate()
   } catch {
     // 401 已由拦截器跳登录页，其余错误已弹提示
   } finally {
@@ -57,10 +93,10 @@ async function onCreate(): Promise<void> {
     ElMessage.warning('先给新账本起个名字')
     return
   }
-  if (busy.value) return
-  busy.value = true
+  if (creating.value) return
+  creating.value = true
   try {
-    const book = await createBook({ name })
+    const book = await createBook({ name, templateId: newTemplateId.value })
     newName.value = ''
     // 必须刷新 store：layout 的 key 取自 store 里的 current 账本，只调接口不更新 store 的话
     // 页面不会重挂，看起来就是「新建了但没切过去，刷新一下才对」
@@ -69,7 +105,7 @@ async function onCreate(): Promise<void> {
   } catch {
     // 提示已由拦截器弹出（如「账本最多 10 本」）
   } finally {
-    busy.value = false
+    creating.value = false
   }
 }
 
@@ -183,6 +219,7 @@ async function onPurge(item: BookTrash): Promise<void> {
 
 onMounted(() => {
   void load()
+  void loadTemplates()
 })
 </script>
 
@@ -198,12 +235,26 @@ onMounted(() => {
         <div class="create-row">
           <el-input
             v-model="newName"
+            class="name-input"
             maxlength="50"
             placeholder="新账本名，如：二班班费"
             @keyup.enter="onCreate"
           />
-          <el-button type="primary" :loading="busy" @click="onCreate">新建</el-button>
+          <el-select v-model="newTemplateId" class="tpl-select" placeholder="分类模板">
+            <el-option
+              v-for="t in templates"
+              :key="t.id"
+              :value="t.id"
+              :label="templateLabel(t)"
+            />
+          </el-select>
+          <el-button type="primary" :loading="creating" @click="onCreate">新建</el-button>
         </div>
+
+        <p class="hint create-hint">
+          「分类模板」决定新账本预置哪套分类，默认沿用当前账本的模板；建好后要换模板得去
+          <router-link to="/categories">分类</router-link>页（且那本账本不能有流水）。
+        </p>
 
         <div v-loading="loading" class="book-list">
           <el-empty v-if="!loading && books.length === 0" description="还没有账本" />
@@ -241,7 +292,7 @@ onMounted(() => {
         </div>
 
         <p class="hint">
-          删除会进回收站，15 天内可以恢复；至少保留一本账本。新建账本会自动预置 13 个分类。
+          删除会进回收站，15 天内可以恢复；至少保留一本账本。
         </p>
       </el-tab-pane>
 
@@ -285,8 +336,22 @@ onMounted(() => {
 
 .create-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.tpl-select {
+  width: 200px;
+}
+
+.name-input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.create-hint {
+  margin: 0 0 12px;
 }
 
 .book-list {
@@ -338,6 +403,10 @@ onMounted(() => {
 @media (max-width: 767px) {
   .trash-meta {
     display: none;
+  }
+
+  .tpl-select {
+    width: 100%;
   }
 }
 </style>

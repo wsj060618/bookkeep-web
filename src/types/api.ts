@@ -123,6 +123,16 @@ export interface BookUpdateReq {
   name: string
 }
 
+/**
+ * 新建账本的请求体，对应后端 BookCreateReq。
+ * `templateId` 决定新账本预置哪套分类：**省略 / 0 / null 都是内置「班级班费」**。
+ */
+export interface BookCreateReq {
+  /** ≤50 字，不能全空格 */
+  name: string
+  templateId?: number | null
+}
+
 /** 回收站里的账本，对应后端 BookTrashResp */
 export interface BookTrash {
   id: number

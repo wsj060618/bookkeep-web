@@ -1,4 +1,4 @@
-import type { Book, BookTrash, BookUpdateReq, ShareLink } from '../types/api'
+import type { Book, BookCreateReq, BookTrash, BookUpdateReq, ShareLink } from '../types/api'
 import { del, get, post, put } from './request'
 
 /** 账本接口，对应后端 BookController（增删改查 + 回收站，PLAN §5.2） */
@@ -8,8 +8,8 @@ export function listBooks(): Promise<Book[]> {
   return get<Book[]>('/books')
 }
 
-/** POST /api/books —— 新建并自动切为当前；后端会预置 13 条分类 */
-export function createBook(req: BookUpdateReq): Promise<Book> {
+/** POST /api/books —— 新建并自动切为当前；按 templateId 预置分类（省略 = 内置 13 条） */
+export function createBook(req: BookCreateReq): Promise<Book> {
   return post<Book>('/books', req)
 }
 
