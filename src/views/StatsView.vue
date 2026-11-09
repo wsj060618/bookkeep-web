@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
-import { colorOf, iconOf } from '../utils/category'
 import { useShell } from '../composables/shell'
 import type { CategoryStat, Summary, TxType } from '../types/api'
 
-/** 图表按需加载：默认是条形图，不该为了看一眼页面就下载 ECharts */
-const CategoryPieChart = defineAsyncComponent(() => import('../components/CategoryPieChart.vue'))
+/** 图表按需加载：默认是条形图，但图表库（ECharts）仍只在真正要画图时才拉 */
+const CategoryChart = defineAsyncComponent(() => import('../components/CategoryChart.vue'))
 
 /**
  * 统计页：按月看收支与分类占比。
@@ -127,25 +126,7 @@ onMounted(() => {
       </div>
 
       <template v-if="current.length">
-        <CategoryPieChart
-          v-if="chartType !== 'bar'"
-          :items="current"
-          :donut="chartType === 'donut'"
-        />
-
-        <div v-else class="cat-grid">
-          <div v-for="c in current" :key="c.categoryId" class="cat-row">
-            <span class="cat-name">{{ iconOf(c.categoryIcon) }} {{ c.categoryName }}</span>
-            <span class="cat-bar">
-              <span
-                class="cat-bar-inner"
-                :style="{ width: `${c.percent}%`, background: colorOf(c.categoryColor) }"
-              />
-            </span>
-            <span class="cat-amount">￥{{ c.amount }}</span>
-            <span class="cat-percent">{{ c.percent }}%</span>
-          </div>
-        </div>
+        <CategoryChart :items="current" :type="chartType" />
       </template>
       <el-empty v-else :description="`这个月还没有${directionLabel}`" />
     </section>
@@ -266,49 +247,6 @@ onMounted(() => {
   gap: 8px;
 }
 
-.cat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 10px 32px;
-}
-
-.cat-row {
-  display: grid;
-  grid-template-columns: 110px 1fr 84px 52px;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-
-.cat-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cat-bar {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--el-fill-color);
-  overflow: hidden;
-}
-
-.cat-bar-inner {
-  display: block;
-  height: 100%;
-  border-radius: 4px;
-}
-
-.cat-amount,
-.cat-percent {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.cat-percent {
-  color: var(--el-text-color-secondary);
-}
-
 @media (max-width: 520px) {
   .numbers {
     grid-template-columns: repeat(2, 1fr);
@@ -316,14 +254,6 @@ onMounted(() => {
 
   .num-value {
     font-size: 18px;
-  }
-
-  .cat-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .cat-row {
-    grid-template-columns: 86px 1fr 76px 46px;
   }
 }
 </style>

@@ -5,8 +5,8 @@ import { fetchPublicReport } from '../api/public'
 import type { CategoryStat, PublicReport, TxType } from '../types/api'
 import { colorOf, iconOf } from '../utils/category'
 
-/** 图表按需加载：默认条形图，同学用手机打开公示页时不该白下载 ECharts */
-const CategoryPieChart = defineAsyncComponent(() => import('../components/CategoryPieChart.vue'))
+/** 图表按需加载：ECharts 只在真正画图时才拉，不拖慢手机打开公示页 */
+const CategoryChart = defineAsyncComponent(() => import('../components/CategoryChart.vue'))
 
 /**
  * 只读公示页 /report/{token}：免登录、只有账本名与金额、没有任何个人信息。
@@ -134,22 +134,7 @@ onMounted(load)
           </div>
 
           <template v-if="currentCategories.length">
-            <CategoryPieChart
-              v-if="chartType !== 'bar'"
-              :items="currentCategories"
-              :donut="chartType === 'donut'"
-            />
-
-            <div v-else class="rows">
-              <div v-for="c in currentCategories" :key="c.categoryId" class="row">
-                <span class="row-name">{{ iconOf(c.categoryIcon) }} {{ c.categoryName }}</span>
-                <span class="bar">
-                  <span class="bar-inner" :style="{ width: `${c.percent}%`, background: colorOf(c.categoryColor) }" />
-                </span>
-                <span class="row-amount">￥{{ c.amount }}</span>
-                <span class="row-percent">{{ c.percent }}%</span>
-              </div>
-            </div>
+            <CategoryChart :items="currentCategories" :type="chartType" />
           </template>
           <p v-else class="empty">本月还没有{{ directionLabel }}</p>
         </div>
@@ -313,39 +298,6 @@ onMounted(load)
   gap: 6px;
 }
 
-.row {
-  display: grid;
-  grid-template-columns: 90px 1fr 78px 52px;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.row-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--el-fill-color-light);
-  overflow: hidden;
-}
-
-.bar-inner {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-}
-
-.row-amount,
-.row-percent {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
 .card-title {
   margin: 0 0 8px;
   font-size: 13px;
@@ -438,10 +390,6 @@ onMounted(load)
 @media (max-width: 520px) {
   .numbers {
     grid-template-columns: repeat(2, 1fr);
-  }
-
-  .row {
-    grid-template-columns: 80px 1fr 70px 46px;
   }
 }
 </style>
