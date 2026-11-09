@@ -52,6 +52,9 @@ const selectedTemplate = computed(
 )
 const selectedIsBuiltin = computed(() => selectedTemplate.value?.builtin ?? true)
 
+/** 当前账本已归档 = 只读：不能增删改分类（模板是账号级的，仍可维护） */
+const archived = computed(() => (auth.books.find((b) => b.current) ?? null)?.archived === true)
+
 /** 账本记的是「基于哪套模板」；null 表示内置 */
 function syncTemplateFromBook(): void {
   const current = auth.books.find((b) => b.current) ?? auth.books[0] ?? null
@@ -176,6 +179,10 @@ async function refresh(): Promise<void> {
 }
 
 function openCreate(type: TxType): void {
+  if (archived.value) {
+    ElMessage.warning('当前账本已归档（学期结束），先取消归档再改分类')
+    return
+  }
   editingCategory.value = null
   formType.value = type
   formInitial.value = null
@@ -183,6 +190,10 @@ function openCreate(type: TxType): void {
 }
 
 function openEdit(category: Category): void {
+  if (archived.value) {
+    ElMessage.warning('当前账本已归档（学期结束），先取消归档再改分类')
+    return
+  }
   editingCategory.value = category
   formType.value = category.type
   formInitial.value = { name: category.name, icon: category.icon, color: category.color }
@@ -215,6 +226,10 @@ async function onCategorySubmit(payload: {
 }
 
 async function onDelete(category: Category): Promise<void> {
+  if (archived.value) {
+    ElMessage.warning('当前账本已归档（学期结束），先取消归档再改分类')
+    return
+  }
   if (busy.value) return
   const confirmed = await ElMessageBox.confirm(
     `「${category.name}」删除后不可恢复；它下面还有流水时后端会拒绝并告诉你笔数。`,
@@ -249,6 +264,7 @@ onMounted(async () => {
       <h2 class="page-title">分类</h2>
       <p class="page-desc">
         分类属于<b>当前账本</b>，换账本就换一套；模板属于<b>你的账号</b>，新建账本时可以直接选一套。
+        <template v-if="archived">当前账本已归档，分类只读。</template>
       </p>
     </div>
 
@@ -287,7 +303,7 @@ onMounted(async () => {
     <section v-for="group in GROUPS" :key="group.type" class="cat-card">
       <header class="cat-head">
         <h3 class="cat-title">{{ group.title }}</h3>
-        <el-button size="small" type="primary" plain @click="openCreate(group.type)">
+        <el-button size="small" type="primary" plain :disabled="archived" @click="openCreate(group.type)">
           ＋ 新增{{ group.short }}
         </el-button>
       </header>
@@ -302,8 +318,8 @@ onMounted(async () => {
           <span class="cat-name">{{ category.name }}</span>
           <span class="cat-color" :style="{ background: colorOf(category.color) }" />
           <span class="cat-ops">
-            <el-button text size="small" @click="openEdit(category)">编辑</el-button>
-            <el-button text size="small" type="danger" @click="onDelete(category)">删除</el-button>
+            <el-button text size="small" :disabled="archived" @click="openEdit(category)">编辑</el-button>
+            <el-button text size="small" type="danger" :disabled="archived" @click="onDelete(category)">删除</el-button>
           </span>
         </div>
       </div>

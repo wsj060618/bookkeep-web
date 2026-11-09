@@ -54,6 +54,10 @@ export interface Book {
    * 语义是「基于哪套模板」，用户手工增删改分类后不会清空。
    */
   categoryTemplateId: number | null
+  /** 学期截止日期（yyyy-MM-dd）；null = 没填。只用于展示，不参与统计 */
+  semesterEnd: string | null
+  /** 学期归档：true = 只读（不能记流水/改分类，但仍可改名、改截止日期、取消归档、导出、公示） */
+  archived: boolean
   current: boolean
 }
 
@@ -120,10 +124,12 @@ export interface AccountDeleteReq {
   password: string
 }
 
-/** 账本改名 / 新建的请求体，对应后端 BookUpdateReq（都只有 name 一个字段） */
+/** 修改账本（改名 + 可选改学期截止日期），对应后端 BookUpdateReq */
 export interface BookUpdateReq {
   /** ≤50 字，不能全空格 */
   name: string
+  /** 学期截止日期 yyyy-MM-dd；**省略/null = 不改**（不是清空） */
+  semesterEnd?: string | null
 }
 
 /**
@@ -134,6 +140,8 @@ export interface BookCreateReq {
   /** ≤50 字，不能全空格 */
   name: string
   templateId?: number | null
+  /** 学期截止日期 yyyy-MM-dd，可空 */
+  semesterEnd?: string | null
 }
 
 /** 回收站里的账本，对应后端 BookTrashResp */

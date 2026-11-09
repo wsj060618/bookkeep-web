@@ -2,23 +2,27 @@
 import { computed, h, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  archiveBook,
   createBook,
   deleteBook,
   listBooks,
   listTrash,
   purgeBook,
-  renameBook,
   restoreBook,
   switchBook,
+  unarchiveBook,
+  updateBook,
 } from '../api/book'
 import { listTemplates } from '../api/template'
 import type { Book, BookTrash, CategoryTemplate } from '../types/api'
 import { useAuthStore } from '../stores/auth'
 
 /**
- * 账本页：新建 / 改名 / 切换 / 删除（回收站）/ 恢复。
- * 列表以 store 里的 books 为准（顶栏切换器也读它），回收站单独拉。
+ * 账本页：新建 / 编辑 / 切换 / 归档 / 删除（回收站）/ 恢复。
+ * 列表以 store 里的 books 为准（顶栏切换器、归档横幅也读它），回收站单独拉。
  * 切换 / 新建 / 删除都可能改变「当前账本」→ AppLayout 给 RouterView 换 key，本页会重新挂载并重拉。
+ * <p>一个学期 = 一本账本：学期结束就「归档」，归档后只读（不能记流水、不能改分类），
+ * 但仍可改名、改截止日期、导出、分享、取消归档。
  */
 
 const auth = useAuthStore()
@@ -30,10 +34,7 @@ const loading = ref(false)
 const busy = ref(false)
 const trash = ref<BookTrash[]>([])
 
-const renamingId = ref<number | null>(null)
-const renameValue = ref('')
-
-/* ---------- 新建账本（弹窗：起名 + 选分类模板） ---------- */
+/* ---------- 新建账本（弹窗：起名 + 选分类模板 + 学期截止日期） ---------- */
 
 /** 内置模板的虚拟 id（后端约定 0，不入库） */
 const BUILTIN_ID = 0
@@ -42,6 +43,7 @@ const templates = ref<CategoryTemplate[]>([])
 const createVisible = ref(false)
 const newName = ref('')
 const newTemplateId = ref<number>(BUILTIN_ID)
+const newSemesterEnd = ref<string | null>(null)
 const creating = ref(false)
 
 const currentBook = computed(() => books.value.find((b) => b.current) ?? null)
@@ -72,8 +74,24 @@ async function loadTemplates(): Promise<void> {
 function openCreate(): void {
   syncDefaultTemplate()
   newName.value = ''
+  newSemesterEnd.value = null
   createVisible.value = true
   void loadTemplates()
+}
+
+/* ---------- 编辑（改名 + 学期截止日期） ---------- */
+
+const editVisible = ref(false)
+const editingBook = ref<Book | null>(null)
+const editName = ref('')
+const editSemesterEnd = ref<string | null>(null)
+const savingEdit = ref(false)
+
+function openEdit(book: Book): void {
+  editingBook.value = book
+  editName.value = book.name
+  editSemesterEnd.value = book.semesterEnd
+  editVisible.value = true
 }
 
 async function load(): Promise<void> {
@@ -104,8 +122,13 @@ async function onCreate(): Promise<void> {
   if (creating.value) return
   creating.value = true
   try {
-    const book = await createBook({ name, templateId: newTemplateId.value })
+    const book = await createBook({
+      name,
+      templateId: newTemplateId.value,
+      semesterEnd: newSemesterEnd.value || null,
+    })
     newName.value = ''
+    newSemesterEnd.value = null
     createVisible.value = false
     // 必须刷新 store：layout 的 key 取自 store 里的 current 账本，只调接口不更新 store 的话
     // 页面不会重挂，看起来就是「新建了但没切过去，刷新一下才对」
@@ -115,6 +138,29 @@ async function onCreate(): Promise<void> {
     // 提示已由拦截器弹出（如「账本最多 10 本」），弹窗保持打开
   } finally {
     creating.value = false
+  }
+}
+
+async function onSaveEdit(): Promise<void> {
+  const book = editingBook.value
+  const name = editName.value.trim()
+  if (!book) return
+  if (!name) {
+    ElMessage.warning('账本名不能为空')
+    return
+  }
+  if (savingEdit.value) return
+  savingEdit.value = true
+  try {
+    auth.applyBook(
+      await updateBook(book.id, { name, semesterEnd: editSemesterEnd.value || null }),
+    )
+    editVisible.value = false
+    ElMessage.success('已保存')
+  } catch {
+    // 提示已由拦截器弹出
+  } finally {
+    savingEdit.value = false
   }
 }
 
@@ -131,23 +177,35 @@ async function onSwitch(book: Book): Promise<void> {
   }
 }
 
-function startRename(book: Book): void {
-  renamingId.value = book.id
-  renameValue.value = book.name
-}
+async function onArchive(book: Book): Promise<void> {
+  const confirmed = await ElMessageBox.confirm(
+    `「${book.name}」归档后会变成只读：不能再记流水、不能改分类，` +
+      '但仍可查看、统计、导出、分享，也可以随时取消归档。',
+    '归档账本（学期结束）',
+    { type: 'warning', confirmButtonText: '归档', cancelButtonText: '取消' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (!confirmed) return
 
-async function confirmRename(book: Book): Promise<void> {
-  const name = renameValue.value.trim()
-  if (!name) {
-    ElMessage.warning('账本名不能为空')
-    return
-  }
   if (busy.value) return
   busy.value = true
   try {
-    auth.applyBook(await renameBook(book.id, { name }))
-    renamingId.value = null
-    ElMessage.success('账本名已更新')
+    auth.applyBook(await archiveBook(book.id))
+    ElMessage.success(`「${book.name}」已归档，现在是只读`)
+  } catch {
+    // 同上
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onUnarchive(book: Book): Promise<void> {
+  if (busy.value) return
+  busy.value = true
+  try {
+    auth.applyBook(await unarchiveBook(book.id))
+    ElMessage.success(`「${book.name}」已取消归档，可以继续记账了`)
   } catch {
     // 同上
   } finally {
@@ -236,7 +294,9 @@ onMounted(() => {
   <div class="books-page">
     <div class="page-head">
       <h2 class="page-title">账本</h2>
-      <p class="page-desc">一个账本 = 一套独立数据（分类、流水、统计、导出都跟着当前账本走）。</p>
+      <p class="page-desc">
+        一个账本 = 一套独立数据（分类、流水、统计、导出都跟着当前账本走）。学期结束就归档成只读。
+      </p>
     </div>
 
     <el-tabs v-model="tab">
@@ -249,39 +309,35 @@ onMounted(() => {
           <el-empty v-if="!loading && books.length === 0" description="还没有账本" />
 
           <div v-for="book in books" :key="book.id" class="book-row">
-            <template v-if="renamingId === book.id">
-              <el-input
-                v-model="renameValue"
-                class="rename-input"
-                maxlength="50"
-                @keyup.enter="confirmRename(book)"
-              />
-              <el-button size="small" type="primary" @click="confirmRename(book)">保存</el-button>
-              <el-button size="small" @click="renamingId = null">取消</el-button>
-            </template>
-
-            <template v-else>
-              <span class="book-name">{{ book.name }}</span>
-              <el-tag v-if="book.current" size="small" type="success">当前</el-tag>
-              <span class="book-actions">
-                <el-button v-if="!book.current" text size="small" @click="onSwitch(book)">切换</el-button>
-                <el-button text size="small" @click="startRename(book)">改名</el-button>
-                <el-button
-                  text
-                  size="small"
-                  type="danger"
-                  :disabled="books.length === 1"
-                  @click="onDelete(book)"
-                >
-                  删除
-                </el-button>
-              </span>
-            </template>
+            <span class="book-name">{{ book.name }}</span>
+            <el-tag v-if="book.current" size="small" type="success">当前</el-tag>
+            <el-tag v-if="book.archived" size="small" type="info">已归档</el-tag>
+            <span v-if="book.semesterEnd" class="book-meta">截止 {{ book.semesterEnd }}</span>
+            <span class="book-actions">
+              <el-button v-if="!book.current" text size="small" @click="onSwitch(book)">切换</el-button>
+              <el-button text size="small" @click="openEdit(book)">编辑</el-button>
+              <el-button v-if="!book.archived" text size="small" @click="onArchive(book)">
+                归档
+              </el-button>
+              <el-button v-else text size="small" type="primary" @click="onUnarchive(book)">
+                取消归档
+              </el-button>
+              <el-button
+                text
+                size="small"
+                type="danger"
+                :disabled="books.length === 1"
+                @click="onDelete(book)"
+              >
+                删除
+              </el-button>
+            </span>
           </div>
         </div>
 
         <p class="hint">
           删除会进回收站，15 天内可以恢复；至少保留一本账本。
+          归档的账本是只读的（学期结束），随时可以取消归档。
         </p>
       </el-tab-pane>
 
@@ -312,7 +368,7 @@ onMounted(() => {
             v-model="newName"
             maxlength="50"
             show-word-limit
-            placeholder="如：二班班费"
+            placeholder="如：2026-2027 秋季"
             @keydown.enter.prevent="onCreate"
           />
         </el-form-item>
@@ -327,16 +383,57 @@ onMounted(() => {
             />
           </el-select>
         </el-form-item>
+
+        <el-form-item label="学期截止日期（可选）">
+          <el-date-picker
+            v-model="newSemesterEnd"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="如：2027-01-15"
+            style="width: 100%"
+          />
+        </el-form-item>
       </el-form>
 
       <p class="dialog-tip">
-        新账本直接按这套模板预置分类。建好之后账本一旦有了流水就不能再换模板，
-        要换就再去<router-link to="/categories">分类</router-link>页维护模板。
+        新账本直接按这套模板预置分类；学期结束可以在账本页把它「归档」成只读，换届数据就不会被误改。
       </p>
 
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
         <el-button type="primary" :loading="creating" @click="onCreate">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editVisible" title="编辑账本" width="min(440px, 92vw)">
+      <el-form label-position="top" @submit.prevent="onSaveEdit">
+        <el-form-item label="账本名">
+          <el-input
+            v-model="editName"
+            maxlength="50"
+            show-word-limit
+            @keydown.enter.prevent="onSaveEdit"
+          />
+        </el-form-item>
+
+        <el-form-item label="学期截止日期（可选）">
+          <el-date-picker
+            v-model="editSemesterEnd"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="如：2027-01-15"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+
+      <p v-if="editingBook?.archived" class="dialog-tip">
+        这本账本已归档，只能改名字和截止日期；要补记流水请先「取消归档」。
+      </p>
+
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingEdit" @click="onSaveEdit">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -396,8 +493,10 @@ onMounted(() => {
   font-weight: 500;
 }
 
-.rename-input {
-  flex: 1;
+.book-meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
 }
 
 .book-actions {
@@ -419,7 +518,8 @@ onMounted(() => {
 }
 
 @media (max-width: 767px) {
-  .trash-meta {
+  .trash-meta,
+  .book-meta {
     display: none;
   }
 }

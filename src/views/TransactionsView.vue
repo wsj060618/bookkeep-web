@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteTransaction, exportTransactions, pageTransactions } from '../api/transaction'
 import { saveBlob } from '../api/request'
 import { useShell } from '../composables/shell'
+import { useAuthStore } from '../stores/auth'
 import TxItem from '../components/TxItem.vue'
 import type { Transaction, TransactionQuery, TxType } from '../types/api'
 
@@ -13,6 +14,10 @@ import type { Transaction, TransactionQuery, TxType } from '../types/api'
  */
 
 const shell = useShell()
+const auth = useAuthStore()
+
+/** 归档账本只读：流水行的「编辑 / 删除」一起收起来（后端也会拦） */
+const archived = computed(() => (auth.books.find((b) => b.current) ?? null)?.archived === true)
 
 const loading = ref(false)
 const list = ref<Transaction[]>([])
@@ -209,7 +214,7 @@ onMounted(() => {
         v-for="tx in list"
         :key="tx.id"
         :tx="tx"
-        actions
+        :actions="!archived"
         @edit="shell.openEdit"
         @remove="onDelete"
       />

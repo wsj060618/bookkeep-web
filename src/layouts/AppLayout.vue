@@ -24,6 +24,8 @@ const auth = useAuthStore()
 
 const currentBook = computed(() => auth.books.find((b) => b.current) ?? auth.books[0] ?? null)
 const currentBookId = computed(() => currentBook.value?.id ?? null)
+/** 当前账本已归档 = 只读：记一笔的入口要收起，并在页面顶部说明原因 */
+const currentArchived = computed(() => currentBook.value?.archived === true)
 
 const categories = ref<Category[]>([])
 const txVersion = ref(0)
@@ -285,6 +287,13 @@ onMounted(async () => {
       </header>
 
       <main class="content">
+        <div v-if="currentArchived" class="readonly-banner">
+          <span class="readonly-title">当前账本已归档（学期结束），只读</span>
+          <span class="readonly-desc">仍可查看、统计、导出、分享；要补记流水或改分类，请先取消归档。</span>
+          <el-button link type="primary" size="small" @click="router.push({ name: 'books' })">
+            去账本页
+          </el-button>
+        </div>
         <RouterView :key="currentBookId ?? 0" />
       </main>
     </div>
@@ -318,7 +327,7 @@ onMounted(async () => {
       </nav>
     </el-drawer>
 
-    <el-button v-if="onTransactions" class="fab" type="primary" @click="openCreate">＋ 记一笔</el-button>
+    <el-button v-if="onTransactions && !currentArchived" class="fab" type="primary" @click="openCreate">＋ 记一笔</el-button>
 
     <TransactionFormDialog
       v-model="formVisible"
@@ -478,6 +487,30 @@ onMounted(async () => {
   max-width: 1440px;
   margin: 0 auto;
   padding: 24px 32px 80px;
+}
+
+/* 归档账本只读提示：一条就够，不弹窗，不挡住页面内容 */
+.readonly-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--el-color-warning-light-5);
+  background: var(--el-color-warning-light-9);
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+}
+
+.readonly-title {
+  font-weight: 600;
+  color: var(--el-color-warning-dark-2);
+}
+
+.readonly-desc {
+  color: var(--el-text-color-secondary);
 }
 
 .drawer-nav {

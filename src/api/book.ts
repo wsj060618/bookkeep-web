@@ -8,14 +8,24 @@ export function listBooks(): Promise<Book[]> {
   return get<Book[]>('/books')
 }
 
-/** POST /api/books —— 新建并自动切为当前；按 templateId 预置分类（省略 = 内置 13 条） */
+/** POST /api/books —— 新建并自动切为当前；按 templateId 预置分类（省略 = 内置 11 条） */
 export function createBook(req: BookCreateReq): Promise<Book> {
   return post<Book>('/books', req)
 }
 
-/** PUT /api/books/{id} —— 改名，shareToken 不变 */
-export function renameBook(id: number, req: BookUpdateReq): Promise<Book> {
+/** PUT /api/books/{id} —— 改名 +（可选）改学期截止日期，shareToken 不变 */
+export function updateBook(id: number, req: BookUpdateReq): Promise<Book> {
   return put<Book>(`/books/${id}`, req)
+}
+
+/** PUT /api/books/{id}/archive —— 学期结束：归档成只读（仍可改名/改截止日期/取消归档/导出/公示） */
+export function archiveBook(id: number): Promise<Book> {
+  return put<Book>(`/books/${id}/archive`)
+}
+
+/** PUT /api/books/{id}/unarchive —— 取消归档，恢复可记账、可改分类 */
+export function unarchiveBook(id: number): Promise<Book> {
+  return put<Book>(`/books/${id}/unarchive`)
 }
 
 /** PUT /api/books/{id}/current —— 切换当前账本，返回切换后的完整列表 */
