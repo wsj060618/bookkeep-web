@@ -275,7 +275,10 @@ export interface PublicReport {
   expense: string
   balance: string
   totalBalance: string
-  categories: CategoryStat[]
+  /** 支出分类占比（金额降序） */
+  expenseCategories: CategoryStat[]
+  /** 收入分类占比（金额降序）——公示页也要能看「钱从哪来」 */
+  incomeCategories: CategoryStat[]
   /** 按日期升序，逐行结余从上往下读 */
   transactions: ReportTransaction[]
 }

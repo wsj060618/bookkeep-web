@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchPublicReport } from '../api/public'
-import type { PublicReport } from '../types/api'
+import type { CategoryStat, PublicReport, TxType } from '../types/api'
 import { colorOf, iconOf } from '../utils/category'
+
+/** 图表按需加载：默认条形图，同学用手机打开公示页时不该白下载 ECharts */
+const CategoryPieChart = defineAsyncComponent(() => import('../components/CategoryPieChart.vue'))
 
 /**
  * 只读公示页 /report/{token}：免登录、只有账本名与金额、没有任何个人信息。
  * 这个页面永远不能出现「登录」「记一笔」这类入口——它是要转发到班群的。
+ * <p>分类占比给支出、收入两个方向（钱花哪了 / 钱从哪来），展示形式可切条形图 / 饼图 / 环形图。
  */
 
 const route = useRoute()
@@ -17,6 +21,23 @@ const report = ref<PublicReport | null>(null)
 const loading = ref(false)
 const failed = ref(false)
 const month = ref('')
+
+type ChartType = 'bar' | 'pie' | 'donut'
+const direction = ref<TxType>('expense')
+const chartType = ref<ChartType>('bar')
+
+const directionLabel = computed(() => (direction.value === 'expense' ? '支出' : '收入'))
+
+const currentCategories = computed<CategoryStat[]>(() => {
+  if (!report.value) return []
+  return direction.value === 'expense' ? report.value.expenseCategories : report.value.incomeCategories
+})
+
+/** 本方向合计：按「分」累加，避免两位小数直接相加出现浮点误差 */
+const categoryTotal = computed(() => {
+  const cents = currentCategories.value.reduce((sum, c) => sum + Math.round(Number(c.amount) * 100), 0)
+  return (cents / 100).toFixed(2)
+})
 
 async function load(): Promise<void> {
   if (!token.value) {
@@ -92,15 +113,45 @@ onMounted(load)
           </div>
         </div>
 
-        <div v-if="report?.categories.length" class="breakdown">
-          <div v-for="c in report.categories" :key="c.categoryId" class="row">
-            <span class="row-name">{{ iconOf(c.categoryIcon) }} {{ c.categoryName }}</span>
-            <span class="bar">
-              <span class="bar-inner" :style="{ width: `${c.percent}%`, background: colorOf(c.categoryColor) }" />
+        <div class="breakdown">
+          <div class="breakdown-head">
+            <span class="breakdown-title">
+              {{ directionLabel }}分类占比
+              <span class="breakdown-total">合计 ￥{{ categoryTotal }}</span>
             </span>
-            <span class="row-amount">￥{{ c.amount }}</span>
-            <span class="row-percent">{{ c.percent }}%</span>
+
+            <div class="breakdown-switches">
+              <el-radio-group v-model="direction" size="small">
+                <el-radio-button value="expense">支出</el-radio-button>
+                <el-radio-button value="income">收入</el-radio-button>
+              </el-radio-group>
+              <el-radio-group v-model="chartType" size="small">
+                <el-radio-button value="bar">条形图</el-radio-button>
+                <el-radio-button value="pie">饼图</el-radio-button>
+                <el-radio-button value="donut">环形图</el-radio-button>
+              </el-radio-group>
+            </div>
           </div>
+
+          <template v-if="currentCategories.length">
+            <CategoryPieChart
+              v-if="chartType !== 'bar'"
+              :items="currentCategories"
+              :donut="chartType === 'donut'"
+            />
+
+            <div v-else class="rows">
+              <div v-for="c in currentCategories" :key="c.categoryId" class="row">
+                <span class="row-name">{{ iconOf(c.categoryIcon) }} {{ c.categoryName }}</span>
+                <span class="bar">
+                  <span class="bar-inner" :style="{ width: `${c.percent}%`, background: colorOf(c.categoryColor) }" />
+                </span>
+                <span class="row-amount">￥{{ c.amount }}</span>
+                <span class="row-percent">{{ c.percent }}%</span>
+              </div>
+            </div>
+          </template>
+          <p v-else class="empty">本月还没有{{ directionLabel }}</p>
         </div>
       </section>
 
@@ -224,11 +275,42 @@ onMounted(load)
 }
 
 .breakdown {
-  display: grid;
-  gap: 6px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.breakdown-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.breakdown-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.breakdown-total {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-secondary);
+}
+
+.breakdown-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rows {
+  display: grid;
+  gap: 6px;
 }
 
 .row {

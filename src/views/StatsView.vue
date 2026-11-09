@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
-import CategoryPieChart from '../components/CategoryPieChart.vue'
 import { colorOf, iconOf } from '../utils/category'
 import { useShell } from '../composables/shell'
 import type { CategoryStat, Summary, TxType } from '../types/api'
+
+/** 图表按需加载：默认是条形图，不该为了看一眼页面就下载 ECharts */
+const CategoryPieChart = defineAsyncComponent(() => import('../components/CategoryPieChart.vue'))
 
 /**
  * 统计页：按月看收支与分类占比。
