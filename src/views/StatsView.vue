@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
+import CategoryChartCard from '../components/CategoryChartCard.vue'
 import { useShell } from '../composables/shell'
 import type { CategoryStat, Summary, TxType } from '../types/api'
 
-/** 图表按需加载：默认是柱状图，但图表库（ECharts）仍只在真正要画图时才拉 */
-const CategoryChart = defineAsyncComponent(() => import('../components/CategoryChart.vue'))
-
 /**
  * 统计页：按月看收支与分类占比。
- * 占比**收入在左、支出在右并排一行**（一次看全，不用来回切方向），
- * 展示形式可切柱状图 / 饼图 / 环形图（三种都走 ECharts）。
+ * 占比拆成**收入、支出两张卡片并排**（收入在左、支出在右），
+ * **每张卡自己带柱状图 / 饼图 / 环形图切换**，互不影响。
  * 改过流水（txVersion 变化）后要重拉，否则从流水页回来数字是旧的。
  */
 
@@ -22,18 +20,6 @@ const month = ref('')
 const summary = ref<Summary | null>(null)
 /** 两个方向一次都拉回来：并排展示，不需要再等第二次请求 */
 const stats = ref<Record<TxType, CategoryStat[]>>({ expense: [], income: [] })
-
-type ChartType = 'bar' | 'pie' | 'donut'
-const chartType = ref<ChartType>('bar')
-
-/** 合计用「分」累加，避免两位小数直接相加出现浮点误差 */
-function totalOf(list: CategoryStat[]): string {
-  const cents = list.reduce((sum, item) => sum + Math.round(Number(item.amount) * 100), 0)
-  return (cents / 100).toFixed(2)
-}
-
-const incomeTotal = computed(() => totalOf(stats.value.income))
-const expenseTotal = computed(() => totalOf(stats.value.expense))
 
 async function load(): Promise<void> {
   loading.value = true
@@ -104,34 +90,12 @@ onMounted(() => {
     <section v-loading="loading" class="panel">
       <div class="panel-head">
         <h3 class="panel-title">分类占比</h3>
-        <div class="panel-switches">
-          <el-radio-group v-model="chartType" size="small">
-            <el-radio-button value="bar">柱状图</el-radio-button>
-            <el-radio-button value="pie">饼图</el-radio-button>
-            <el-radio-button value="donut">环形图</el-radio-button>
-          </el-radio-group>
-          <span class="panel-month">{{ summary?.month ?? '' }}</span>
-        </div>
+        <span class="panel-month">{{ summary?.month ?? '' }}</span>
       </div>
 
       <div class="charts-row">
-        <div class="chart-block">
-          <header class="chart-head">
-            <span class="chart-title income">收入</span>
-            <span class="chart-total">合计 ￥{{ incomeTotal }}</span>
-          </header>
-          <CategoryChart v-if="stats.income.length" :items="stats.income" :type="chartType" />
-          <p v-else class="chart-empty">本月还没有收入</p>
-        </div>
-
-        <div class="chart-block">
-          <header class="chart-head">
-            <span class="chart-title expense">支出</span>
-            <span class="chart-total">合计 ￥{{ expenseTotal }}</span>
-          </header>
-          <CategoryChart v-if="stats.expense.length" :items="stats.expense" :type="chartType" />
-          <p v-else class="chart-empty">本月还没有支出</p>
-        </div>
+        <CategoryChartCard title="收入" tone="income" :items="stats.income" />
+        <CategoryChartCard title="支出" tone="expense" :items="stats.expense" />
       </div>
     </section>
   </div>
@@ -206,17 +170,13 @@ onMounted(() => {
 }
 
 .panel {
-  padding: 16px;
-  border-radius: 12px;
-  background: var(--el-bg-color);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
   min-height: 160px;
 }
 
 .panel-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px 12px;
   margin-bottom: 8px;
@@ -225,13 +185,6 @@ onMounted(() => {
 .panel-title {
   margin: 0;
   font-size: 14px;
-}
-
-.panel-switches {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
 }
 
 .panel-month {
@@ -243,45 +196,6 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-}
-
-.chart-block {
-  min-width: 0;
-}
-
-.chart-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.chart-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.chart-title.income {
-  color: #10b981;
-}
-
-.chart-title.expense {
-  color: #ef4444;
-}
-
-.chart-total {
-  margin-left: auto;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--el-text-color-secondary);
-}
-
-.chart-empty {
-  margin: 0;
-  padding: 120px 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 
 @media (max-width: 900px) {
