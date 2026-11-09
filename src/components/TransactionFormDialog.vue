@@ -202,7 +202,7 @@ async function onSubmit(): Promise<void> {
               size="small"
               maxlength="50"
               placeholder="新分类名，如：打印费"
-              @keyup.enter="onCreateCategory"
+              @keydown.enter.prevent="onCreateCategory"
             />
             <el-button
               size="small"

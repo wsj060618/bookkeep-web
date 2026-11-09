@@ -162,7 +162,7 @@ onMounted(() => {
             maxlength="50"
             show-word-limit
             placeholder="如：打印费"
-            @keyup.enter="onSubmit"
+            @keydown.enter.prevent="onSubmit"
           />
         </el-form-item>
 
