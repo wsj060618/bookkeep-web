@@ -49,7 +49,33 @@ export interface Book {
   shareToken: string | null
   /** 链接到期时间（yyyy-MM-dd HH:mm:ss）；null 或已过期表示没有可用链接 */
   shareTokenExpiresAt: string | null
+  /**
+   * 当前分类来自哪套自定义模板；**null = 内置「班级班费」模板**（后端 id=0，不入库）。
+   * 语义是「基于哪套模板」，用户手工增删改分类后不会清空。
+   */
+  categoryTemplateId: number | null
   current: boolean
+}
+
+/** 分类模板条目，字段与分类一一对应（应用模板时按 sortOrder 逐条复制） */
+export interface CategoryTemplateItem {
+  name: string
+  type: TxType
+  icon: string | null
+  color: string | null
+  sortOrder: number
+}
+
+/**
+ * 分类模板，对应后端 CategoryTemplateResp。
+ * **跟账号走**（不按账本隔离），一套模板可应用到该用户任意账本。
+ * `id === 0` 是内置「班级班费」：不能改名/删除，只能应用。
+ */
+export interface CategoryTemplate {
+  id: number
+  name: string
+  builtin: boolean
+  items: CategoryTemplateItem[]
 }
 
 /** POST /api/books/{id}/share 的响应：只给 token 与到期时间，URL 由前端用 origin 拼 */
