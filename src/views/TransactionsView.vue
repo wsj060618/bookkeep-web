@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteTransaction, exportTransactions, pageTransactions } from '../api/transaction'
+import { deleteTransaction, deleteTransactions, exportTransactions, pageTransactions } from '../api/transaction'
 import { saveBlob } from '../api/request'
 import { useShell } from '../composables/shell'
 import { useAuthStore } from '../stores/auth'
@@ -18,6 +18,49 @@ const auth = useAuthStore()
 
 /** 归档账本只读：流水行的「编辑 / 删除」一起收起来（后端也会拦） */
 const archived = computed(() => (auth.books.find((b) => b.current) ?? null)?.archived === true)
+
+/* ---------- 勾选与批量删除 ---------- */
+
+const selected = ref<number[]>([])
+const batchDeleting = ref(false)
+
+const allSelected = computed(() => list.value.length > 0 && selected.value.length === list.value.length)
+const someSelected = computed(
+  () => selected.value.length > 0 && selected.value.length < list.value.length,
+)
+
+function toggleSelectAll(value: boolean | string | number): void {
+  selected.value = value ? list.value.map((tx) => tx.id) : []
+}
+
+async function onBatchDelete(): Promise<void> {
+  if (!selected.value.length || batchDeleting.value) return
+  const count = selected.value.length
+  const confirmed = await ElMessageBox.confirm(
+    `确定删除选中的 ${count} 笔流水吗？删除后不可恢复。`,
+    '批量删除流水',
+    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (!confirmed) return
+
+  batchDeleting.value = true
+  try {
+    const deleted = await deleteTransactions(selected.value)
+    ElMessage.success(`已删除 ${deleted} 笔`)
+    selected.value = []
+    // 删完可能当前页空了：回退一页再重拉
+    if (deleted >= list.value.length && page.value > 1) {
+      page.value -= 1
+    }
+    shell.notifyTxChanged()
+  } catch {
+    // 提示已由拦截器弹出
+  } finally {
+    batchDeleting.value = false
+  }
+}
 
 const loading = ref(false)
 const list = ref<Transaction[]>([])
@@ -39,6 +82,8 @@ const filterCategories = computed(() =>
 )
 
 async function loadList(): Promise<void> {
+  // 任何一次重拉都清空勾选：列表内容变了，旧 id 可能已经不在本页
+  selected.value = []
   loading.value = true
   try {
     const query: TransactionQuery = { page: page.value, size: size.value }
@@ -207,17 +252,41 @@ onMounted(() => {
       </div>
     </section>
 
+    <section class="batch-bar">
+      <el-checkbox
+        :model-value="allSelected"
+        :indeterminate="someSelected"
+        :disabled="archived || list.length === 0"
+        @change="toggleSelectAll"
+      >
+        全选本页
+      </el-checkbox>
+      <span class="batch-count">已选 {{ selected.length }} / {{ list.length }} 笔</span>
+      <el-button
+        type="danger"
+        plain
+        size="small"
+        :disabled="!selected.length || archived"
+        :loading="batchDeleting"
+        @click="onBatchDelete"
+      >
+        删除所选
+      </el-button>
+    </section>
+
     <section v-loading="loading" class="tx-list">
       <el-empty v-if="!loading && list.length === 0" description="还没有流水，点「记一笔」开始" />
 
-      <TxItem
-        v-for="tx in list"
-        :key="tx.id"
-        :tx="tx"
-        :actions="!archived"
-        @edit="shell.openEdit"
-        @remove="onDelete"
-      />
+      <div v-for="tx in list" :key="tx.id" class="tx-row">
+        <el-checkbox v-model="selected" :value="tx.id" class="tx-check" :disabled="archived" />
+        <TxItem
+          class="tx-item"
+          :tx="tx"
+          :actions="!archived"
+          @edit="shell.openEdit"
+          @remove="onDelete"
+        />
+      </div>
     </section>
 
     <footer class="pager">
@@ -264,6 +333,39 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   margin-left: auto;
+}
+
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 4px 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+}
+
+.batch-count {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-right: auto;
+}
+
+.tx-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tx-check {
+  margin-top: 10px;
+  flex: none;
+}
+
+.tx-item {
+  flex: 1;
+  min-width: 0;
 }
 
 .tx-list {

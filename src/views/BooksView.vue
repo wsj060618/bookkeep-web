@@ -5,9 +5,11 @@ import {
   archiveBook,
   createBook,
   deleteBook,
+  deleteBooks,
   listBooks,
   listTrash,
   purgeBook,
+  purgeBooks,
   restoreBook,
   switchBook,
   unarchiveBook,
@@ -33,6 +35,87 @@ const tab = ref<'books' | 'trash'>('books')
 const loading = ref(false)
 const busy = ref(false)
 const trash = ref<BookTrash[]>([])
+
+/* ---------- 勾选与批量删除 ---------- */
+
+const selectedBooks = ref<number[]>([])
+const selectedTrash = ref<number[]>([])
+const batchBusy = ref(false)
+
+const allBooksSelected = computed(
+  () => books.value.length > 0 && selectedBooks.value.length === books.value.length,
+)
+const someBooksSelected = computed(
+  () => selectedBooks.value.length > 0 && selectedBooks.value.length < books.value.length,
+)
+const allTrashSelected = computed(
+  () => trash.value.length > 0 && selectedTrash.value.length === trash.value.length,
+)
+const someTrashSelected = computed(
+  () => selectedTrash.value.length > 0 && selectedTrash.value.length < trash.value.length,
+)
+
+function toggleAllBooks(value: boolean | string | number): void {
+  selectedBooks.value = value ? books.value.map((b) => b.id) : []
+}
+
+function toggleAllTrash(value: boolean | string | number): void {
+  selectedTrash.value = value ? trash.value.map((t) => t.id) : []
+}
+
+async function onBatchDeleteBooks(): Promise<void> {
+  if (!selectedBooks.value.length || batchBusy.value) return
+  const count = selectedBooks.value.length
+  const confirmed = await ElMessageBox.confirm(
+    `选中的 ${count} 本账本会移入回收站，15 天内可以恢复；到期后连同分类和流水彻底删除。`,
+    '批量删除账本',
+    { type: 'warning', confirmButtonText: '移入回收站', cancelButtonText: '取消' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (!confirmed) return
+
+  batchBusy.value = true
+  try {
+    auth.setBooks(await deleteBooks(selectedBooks.value))
+    selectedBooks.value = []
+    await load()
+    ElMessage.success(`已把 ${count} 本账本移入回收站`)
+  } catch {
+    // 如「至少保留一本账本」——提示已由拦截器弹出
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+async function onBatchPurgeTrash(): Promise<void> {
+  if (!selectedTrash.value.length || batchBusy.value) return
+  const count = selectedTrash.value.length
+  const confirmed = await ElMessageBox.confirm(
+    h('div', [
+      `选中的 ${count} 本账本会立刻连同全部分类与流水被彻底删除，`,
+      h('span', { style: 'color: var(--el-color-danger); font-weight: 600' }, '无法恢复'),
+      '。确定吗？',
+    ]),
+    '批量彻底删除',
+    { type: 'error', confirmButtonText: '彻底删除', cancelButtonText: '取消' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (!confirmed) return
+
+  batchBusy.value = true
+  try {
+    const deleted = await purgeBooks(selectedTrash.value)
+    selectedTrash.value = []
+    await load()
+    ElMessage.success(`已彻底删除 ${deleted} 本账本`)
+  } catch {
+    // 提示已由拦截器弹出
+  } finally {
+    batchBusy.value = false
+  }
+}
 
 /* ---------- 新建账本（弹窗：起名 + 选分类模板 + 学期截止日期） ---------- */
 
@@ -305,10 +388,33 @@ onMounted(() => {
           <el-button type="primary" @click="openCreate">＋ 新增账本</el-button>
         </div>
 
+        <div class="batch-bar">
+          <el-checkbox
+            :model-value="allBooksSelected"
+            :indeterminate="someBooksSelected"
+            :disabled="books.length === 0"
+            @change="toggleAllBooks"
+          >
+            全选
+          </el-checkbox>
+          <span class="batch-count">已选 {{ selectedBooks.length }} / {{ books.length }} 本</span>
+          <el-button
+            type="danger"
+            plain
+            size="small"
+            :disabled="!selectedBooks.length"
+            :loading="batchBusy"
+            @click="onBatchDeleteBooks"
+          >
+            删除所选
+          </el-button>
+        </div>
+
         <div v-loading="loading" class="book-list">
           <el-empty v-if="!loading && books.length === 0" description="还没有账本" />
 
           <div v-for="book in books" :key="book.id" class="book-row">
+            <el-checkbox v-model="selectedBooks" :value="book.id" class="row-check" />
             <span class="book-name">{{ book.name }}</span>
             <el-tag v-if="book.current" size="small" type="success">当前</el-tag>
             <el-tag v-if="book.archived" size="small" type="info">已归档</el-tag>
@@ -342,10 +448,33 @@ onMounted(() => {
       </el-tab-pane>
 
       <el-tab-pane label="回收站" name="trash">
+        <div class="batch-bar">
+          <el-checkbox
+            :model-value="allTrashSelected"
+            :indeterminate="someTrashSelected"
+            :disabled="trash.length === 0"
+            @change="toggleAllTrash"
+          >
+            全选
+          </el-checkbox>
+          <span class="batch-count">已选 {{ selectedTrash.length }} / {{ trash.length }} 本</span>
+          <el-button
+            type="danger"
+            plain
+            size="small"
+            :disabled="!selectedTrash.length"
+            :loading="batchBusy"
+            @click="onBatchPurgeTrash"
+          >
+            彻底删除所选
+          </el-button>
+        </div>
+
         <div v-loading="loading" class="book-list">
           <el-empty v-if="!loading && trash.length === 0" description="回收站是空的" />
 
           <div v-for="item in trash" :key="item.id" class="book-row">
+            <el-checkbox v-model="selectedTrash" :value="item.id" class="row-check" />
             <span class="book-name">{{ item.name }}</span>
             <span class="trash-meta">
               {{ item.deletedAt.slice(0, 10) }} 删除 · 还剩 {{ daysLeft(item.expireAt) }} 天
@@ -467,6 +596,28 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-secondary);
+}
+
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+}
+
+.batch-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.row-check {
+  flex: none;
+  margin-right: 0;
 }
 
 .book-list {

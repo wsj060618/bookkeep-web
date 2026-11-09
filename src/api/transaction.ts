@@ -28,6 +28,11 @@ export function deleteTransaction(id: number): Promise<void> {
   return del<void>(`/transactions/${id}`)
 }
 
+/** POST /api/transactions/batch-delete —— 批量删除（流水页勾选），返回实际删除条数 */
+export function deleteTransactions(ids: number[]): Promise<number> {
+  return post<number>('/transactions/batch-delete', { ids })
+}
+
 /**
  * GET /api/transactions/export —— 成功是 CSV 文件流，失败仍是 200 + JSON 信封。
  * 调用方拿到的是 {blob, filename}，用 request.ts 的 saveBlob 落盘。

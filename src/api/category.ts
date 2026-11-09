@@ -22,3 +22,8 @@ export function updateCategory(id: number, req: CategoryReq): Promise<Category> 
 export function deleteCategory(id: number): Promise<void> {
   return del<void>(`/categories/${id}`)
 }
+
+/** POST /api/categories/batch-delete —— 批量删除；有一条被流水引用就整批 400，返回实际删除个数 */
+export function deleteCategories(ids: number[]): Promise<number> {
+  return post<number>('/categories/batch-delete', { ids })
+}

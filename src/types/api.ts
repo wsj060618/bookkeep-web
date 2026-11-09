@@ -92,6 +92,17 @@ export interface ShareLink {
   expiresAt: string
 }
 
+/** POST /api/books/share 的一行：批量分享时每本账本一条链接 */
+export interface BookShare {
+  bookId: number
+  bookName: string
+  token: string
+  /** yyyy-MM-dd HH:mm:ss */
+  expiresAt: string
+  /** true = 复用了已有的未过期链接；false = 本次新生成 */
+  reused: boolean
+}
+
 /** POST /api/auth/forgot-password —— 只填邮箱（邮箱是登录凭据且唯一）；返回永远成功 */
 export interface ForgotPasswordReq {
   email: string

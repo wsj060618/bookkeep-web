@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createCategory, deleteCategory, updateCategory } from '../api/category'
+import { createCategory, deleteCategories, deleteCategory, updateCategory } from '../api/category'
 import { listBooks } from '../api/book'
 import {
   createTemplate,
@@ -163,6 +163,51 @@ function byType(type: TxType): Category[] {
   return list.value.filter((c) => c.type === type)
 }
 
+/* ---------- 勾选与批量删除 ---------- */
+
+const selectedCats = ref<number[]>([])
+const batchBusy = ref(false)
+
+const allCatsSelected = computed(
+  () => list.value.length > 0 && selectedCats.value.length === list.value.length,
+)
+const someCatsSelected = computed(
+  () => selectedCats.value.length > 0 && selectedCats.value.length < list.value.length,
+)
+
+function toggleAllCats(value: boolean | string | number): void {
+  selectedCats.value = value ? list.value.map((c) => c.id) : []
+}
+
+async function onBatchDeleteCats(): Promise<void> {
+  if (!selectedCats.value.length || batchBusy.value) return
+  if (archived.value) {
+    ElMessage.warning('当前账本已归档（学期结束），先取消归档再改分类')
+    return
+  }
+  const count = selectedCats.value.length
+  const confirmed = await ElMessageBox.confirm(
+    `确定删除选中的 ${count} 个分类吗？其中任何一个下面还有流水，整批都会被拒绝。`,
+    '批量删除分类',
+    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (!confirmed) return
+
+  batchBusy.value = true
+  try {
+    const deleted = await deleteCategories(selectedCats.value)
+    selectedCats.value = []
+    await shell.reloadCategories()
+    ElMessage.success(`已删除 ${deleted} 个分类`)
+  } catch {
+    // 被流水引用时后端 400，提示已由拦截器弹出
+  } finally {
+    batchBusy.value = false
+  }
+}
+
 const dialogVisible = ref(false)
 const editingCategory = ref<Category | null>(null)
 const formType = ref<TxType>('expense')
@@ -300,6 +345,28 @@ onMounted(async () => {
       </p>
     </section>
 
+    <section class="batch-bar">
+      <el-checkbox
+        :model-value="allCatsSelected"
+        :indeterminate="someCatsSelected"
+        :disabled="archived || list.length === 0"
+        @change="toggleAllCats"
+      >
+        全选
+      </el-checkbox>
+      <span class="batch-count">已选 {{ selectedCats.length }} / {{ list.length }} 个</span>
+      <el-button
+        type="danger"
+        plain
+        size="small"
+        :disabled="!selectedCats.length || archived"
+        :loading="batchBusy"
+        @click="onBatchDeleteCats"
+      >
+        删除所选
+      </el-button>
+    </section>
+
     <section v-for="group in GROUPS" :key="group.type" class="cat-card">
       <header class="cat-head">
         <h3 class="cat-title">{{ group.title }}</h3>
@@ -314,6 +381,7 @@ onMounted(async () => {
         </p>
 
         <div v-for="category in byType(group.type)" :key="category.id" class="cat-row">
+          <el-checkbox v-model="selectedCats" :value="category.id" class="row-check" :disabled="archived" />
           <span class="cat-icon">{{ iconOf(category.icon) }}</span>
           <span class="cat-name">{{ category.name }}</span>
           <span class="cat-color" :style="{ background: colorOf(category.color) }" />
@@ -424,6 +492,28 @@ onMounted(async () => {
   padding: 12px 0;
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+.batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+}
+
+.batch-count {
+  margin-right: auto;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.row-check {
+  flex: none;
+  margin-right: 0;
 }
 
 .cat-row {
