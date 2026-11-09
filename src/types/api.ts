@@ -57,7 +57,7 @@ export interface Book {
   current: boolean
 }
 
-/** 分类模板条目，字段与分类一一对应（应用模板时按 sortOrder 逐条复制） */
+/** 分类模板条目，字段与分类一一对应（新建账本时按此逐条预置） */
 export interface CategoryTemplateItem {
   name: string
   type: TxType
@@ -68,8 +68,8 @@ export interface CategoryTemplateItem {
 
 /**
  * 分类模板，对应后端 CategoryTemplateResp。
- * **跟账号走**（不按账本隔离），一套模板可应用到该用户任意账本。
- * `id === 0` 是内置「班级班费」：不能改名/删除，只能应用。
+ * **跟账号走**（不按账本隔离）：新建账本时选一套来预置分类。
+ * `id === 0` 是内置「班级班费」：不能改名/删除。
  */
 export interface CategoryTemplate {
   id: number
@@ -77,6 +77,9 @@ export interface CategoryTemplate {
   builtin: boolean
   items: CategoryTemplateItem[]
 }
+
+/** 提交模板条目时不用带 sortOrder：后端按传入顺序（先支出后收入）自己编号 */
+export type TemplateItemInput = Pick<CategoryTemplateItem, 'name' | 'type' | 'icon' | 'color'>
 
 /** POST /api/books/{id}/share 的响应：只给 token 与到期时间，URL 由前端用 origin 拼 */
 export interface ShareLink {

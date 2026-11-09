@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { createTransaction, updateTransaction } from '../api/transaction'
 import { createCategory } from '../api/category'
+import CategoryFormDialog from './CategoryFormDialog.vue'
 import { iconOf } from '../utils/category'
 import type { Category, Transaction, TxType } from '../types/api'
 
@@ -51,44 +52,49 @@ function today(): string {
 /** 只展示当前收支方向下的分类，避免「选了支出分类却记成收入」 */
 const typeCategories = computed(() => props.categories.filter((c) => c.type === form.type))
 
-/* ---------- 就地新建分类 ---------- */
+/* ---------- 「其他」= 现建分类 ---------- */
 
-const addingCategory = ref(false)
+/**
+ * 下拉末尾的「其他」不是真分类，是个 -1 哨兵：选中就弹窗现建（可挑图标/颜色），
+ * 建完自动选中。所以模板/预置分类里故意不再有「其他」这一条。
+ */
+const OTHER = -1
+
+const categoryDialogVisible = ref(false)
 const creatingCategory = ref(false)
-const newCategoryName = ref('')
 
-function startAdd(): void {
-  addingCategory.value = true
-  newCategoryName.value = ''
+/** 记住上一个有效分类：选中「其他」时把 v-model 回退，免得下拉停在哨兵上 */
+let lastCategoryId: number | null = null
+watch(
+  () => form.categoryId,
+  (value) => {
+    if (value !== null && value !== OTHER) lastCategoryId = value
+  },
+)
+
+function onCategoryChange(value: number | null): void {
+  if (value !== OTHER) return
+  form.categoryId = lastCategoryId
+  categoryDialogVisible.value = true
 }
 
-function cancelAdd(): void {
-  addingCategory.value = false
-  newCategoryName.value = ''
-}
-
-/** 新建后不关弹窗：直接把新分类选中，用户接着填金额就行 */
-async function onCreateCategory(): Promise<void> {
-  const name = newCategoryName.value.trim()
-  if (!name) {
-    ElMessage.warning('先给分类起个名字')
-    return
-  }
+/** 新建后不关「记一笔」：直接把新分类选中，用户接着填金额就行 */
+async function onCreateCategory(payload: {
+  name: string
+  type: TxType
+  icon: string
+  color: string
+}): Promise<void> {
   if (creatingCategory.value) return
   creatingCategory.value = true
   try {
-    const created = await createCategory({
-      name,
-      type: form.type,
-      icon: 'other',
-      color: form.type === 'expense' ? 'orange' : 'green',
-    })
+    const created = await createCategory(payload)
     emit('category-created', created)
     form.categoryId = created.id
-    cancelAdd()
+    categoryDialogVisible.value = false
     ElMessage.success(`已新增「${created.name}」并选中`)
   } catch {
-    // 分类名重复等 400 已由拦截器弹出，保留输入让用户改
+    // 分类名重复等 400 已由拦截器弹出，弹窗保持打开让用户改
   } finally {
     creatingCategory.value = false
   }
@@ -119,7 +125,8 @@ watch(
     form.transDate = tx?.transDate ?? today()
     form.note = tx?.note ?? ''
     form.categoryId = tx?.categoryId ?? typeCategories.value[0]?.id ?? null
-    cancelAdd()
+    lastCategoryId = form.categoryId
+    categoryDialogVisible.value = false
     formRef.value?.clearValidate()
   },
 )
@@ -128,10 +135,11 @@ watch(
 watch(
   () => form.type,
   () => {
-    // 输入到一半换方向就放弃这次新建，避免"名字填了、点保存却建到另一个方向"
-    cancelAdd()
+    // 输入到一半换方向就关掉现建的弹窗，避免「名字填了、点保存却建到另一个方向」
+    categoryDialogVisible.value = false
     if (!typeCategories.value.some((c) => c.id === form.categoryId)) {
       form.categoryId = typeCategories.value[0]?.id ?? null
+      lastCategoryId = form.categoryId
     }
   },
 )
@@ -185,39 +193,20 @@ async function onSubmit(): Promise<void> {
       </el-form-item>
 
       <el-form-item label="分类" prop="categoryId">
-        <div class="cat-field">
-          <el-select v-model="form.categoryId" placeholder="请选择分类" style="width: 100%">
-            <el-option
-              v-for="c in typeCategories"
-              :key="c.id"
-              :label="`${iconOf(c.icon)} ${c.name}`"
-              :value="c.id"
-            />
-          </el-select>
-
-          <!-- 就地新建：不跳去分类管理页，建完直接选中，弹窗不关 -->
-          <div v-if="addingCategory" class="cat-add-row">
-            <el-input
-              v-model="newCategoryName"
-              size="small"
-              maxlength="50"
-              placeholder="新分类名，如：打印费"
-              @keydown.enter.prevent="onCreateCategory"
-            />
-            <el-button
-              size="small"
-              type="primary"
-              :loading="creatingCategory"
-              @click="onCreateCategory"
-            >
-              新增并使用
-            </el-button>
-            <el-button size="small" text @click="cancelAdd">取消</el-button>
-          </div>
-          <el-button v-else class="cat-add-btn" size="small" text @click="startAdd">
-            ＋ 新建分类
-          </el-button>
-        </div>
+        <el-select
+          v-model="form.categoryId"
+          placeholder="请选择分类"
+          style="width: 100%"
+          @change="onCategoryChange"
+        >
+          <el-option
+            v-for="c in typeCategories"
+            :key="c.id"
+            :label="`${iconOf(c.icon)} ${c.name}`"
+            :value="c.id"
+          />
+          <el-option :value="OTHER" label="📌 其他（新建分类…）" />
+        </el-select>
       </el-form-item>
 
       <el-form-item label="金额（元）" prop="amount">
@@ -250,37 +239,14 @@ async function onSubmit(): Promise<void> {
       <el-button @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="submitting" @click="onSubmit">保存</el-button>
     </template>
+
+    <!-- 选「其他」时现建分类：和分类管理页同一个表单，能挑图标与颜色 -->
+    <CategoryFormDialog
+      v-model="categoryDialogVisible"
+      :type="form.type"
+      title="新增分类"
+      :saving="creatingCategory"
+      @submit="onCreateCategory"
+    />
   </el-dialog>
 </template>
-
-<style scoped>
-.cat-field {
-  width: 100%;
-}
-
-.cat-add-btn {
-  margin-top: 2px;
-  padding: 0;
-  height: auto;
-  font-size: 12px;
-  color: var(--el-color-primary);
-}
-
-.cat-add-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.cat-add-row .el-input {
-  flex: 1;
-  min-width: 0;
-}
-
-@media (max-width: 480px) {
-  .cat-add-row {
-    flex-wrap: wrap;
-  }
-}
-</style>

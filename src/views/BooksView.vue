@@ -30,16 +30,17 @@ const loading = ref(false)
 const busy = ref(false)
 const trash = ref<BookTrash[]>([])
 
-const newName = ref('')
 const renamingId = ref<number | null>(null)
 const renameValue = ref('')
 
-/* ---------- 新建时选分类模板 ---------- */
+/* ---------- 新建账本（弹窗：起名 + 选分类模板） ---------- */
 
 /** 内置模板的虚拟 id（后端约定 0，不入库） */
 const BUILTIN_ID = 0
 
 const templates = ref<CategoryTemplate[]>([])
+const createVisible = ref(false)
+const newName = ref('')
 const newTemplateId = ref<number>(BUILTIN_ID)
 const creating = ref(false)
 
@@ -66,6 +67,13 @@ async function loadTemplates(): Promise<void> {
   if (!templates.value.some((t) => t.id === newTemplateId.value)) {
     newTemplateId.value = BUILTIN_ID
   }
+}
+
+function openCreate(): void {
+  syncDefaultTemplate()
+  newName.value = ''
+  createVisible.value = true
+  void loadTemplates()
 }
 
 async function load(): Promise<void> {
@@ -98,12 +106,13 @@ async function onCreate(): Promise<void> {
   try {
     const book = await createBook({ name, templateId: newTemplateId.value })
     newName.value = ''
+    createVisible.value = false
     // 必须刷新 store：layout 的 key 取自 store 里的 current 账本，只调接口不更新 store 的话
     // 页面不会重挂，看起来就是「新建了但没切过去，刷新一下才对」
     await load()
     ElMessage.success(`已新建「${book.name}」并切换过去`)
   } catch {
-    // 提示已由拦截器弹出（如「账本最多 10 本」）
+    // 提示已由拦截器弹出（如「账本最多 10 本」），弹窗保持打开
   } finally {
     creating.value = false
   }
@@ -233,28 +242,8 @@ onMounted(() => {
     <el-tabs v-model="tab">
       <el-tab-pane label="我的账本" name="books">
         <div class="create-row">
-          <el-input
-            v-model="newName"
-            class="name-input"
-            maxlength="50"
-            placeholder="新账本名，如：二班班费"
-            @keyup.enter="onCreate"
-          />
-          <el-select v-model="newTemplateId" class="tpl-select" placeholder="分类模板">
-            <el-option
-              v-for="t in templates"
-              :key="t.id"
-              :value="t.id"
-              :label="templateLabel(t)"
-            />
-          </el-select>
-          <el-button type="primary" :loading="creating" @click="onCreate">新建</el-button>
+          <el-button type="primary" @click="openCreate">＋ 新增账本</el-button>
         </div>
-
-        <p class="hint create-hint">
-          「分类模板」决定新账本预置哪套分类，默认沿用当前账本的模板；建好后要换模板得去
-          <router-link to="/categories">分类</router-link>页（且那本账本不能有流水）。
-        </p>
 
         <div v-loading="loading" class="book-list">
           <el-empty v-if="!loading && books.length === 0" description="还没有账本" />
@@ -315,6 +304,41 @@ onMounted(() => {
         </p>
       </el-tab-pane>
     </el-tabs>
+
+    <el-dialog v-model="createVisible" title="新增账本" width="min(440px, 92vw)">
+      <el-form label-position="top" @submit.prevent="onCreate">
+        <el-form-item label="账本名">
+          <el-input
+            v-model="newName"
+            maxlength="50"
+            show-word-limit
+            placeholder="如：二班班费"
+            @keydown.enter.prevent="onCreate"
+          />
+        </el-form-item>
+
+        <el-form-item label="分类模板">
+          <el-select v-model="newTemplateId" style="width: 100%" placeholder="选择分类模板">
+            <el-option
+              v-for="t in templates"
+              :key="t.id"
+              :value="t.id"
+              :label="templateLabel(t)"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <p class="dialog-tip">
+        新账本直接按这套模板预置分类。建好之后账本一旦有了流水就不能再换模板，
+        要换就再去<router-link to="/categories">分类</router-link>页维护模板。
+      </p>
+
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="onCreate">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -341,17 +365,11 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
-.tpl-select {
-  width: 200px;
-}
-
-.name-input {
-  flex: 1;
-  min-width: 160px;
-}
-
-.create-hint {
-  margin: 0 0 12px;
+.dialog-tip {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-secondary);
 }
 
 .book-list {
@@ -403,10 +421,6 @@ onMounted(() => {
 @media (max-width: 767px) {
   .trash-meta {
     display: none;
-  }
-
-  .tpl-select {
-    width: 100%;
   }
 }
 </style>

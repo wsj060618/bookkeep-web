@@ -1,25 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createCategory, deleteCategory, updateCategory } from '../api/category'
 import { listBooks } from '../api/book'
 import {
-  applyTemplate,
+  createTemplate,
   createTemplateFromBook,
   deleteTemplate,
   listTemplates,
-  renameTemplate,
+  updateTemplate,
 } from '../api/template'
+import CategoryFormDialog from '../components/CategoryFormDialog.vue'
+import TemplateFormDialog from '../components/TemplateFormDialog.vue'
 import { useShell } from '../composables/shell'
 import { useAuthStore } from '../stores/auth'
-import { COLOR_CHOICES, ICON_CHOICES, colorOf, iconOf } from '../utils/category'
-import type { Category, CategoryTemplate, TxType } from '../types/api'
+import { colorOf, iconOf } from '../utils/category'
+import type { Category, CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
 
 /**
- * 分类管理：分类跟着当前账本走（切账本后 layout 换 key，本页重挂）；
- * 模板跟着**账号**走，在这里一键套用到当前账本。
- * 列表直接用 shell.categories 这份缓存当唯一数据源：改完只要 reloadCategories()，
- * 「记一笔」下拉、流水页筛选与本页会一起更新，不用各拉一份。
+ * 分类管理页。
+ * <p>分类跟着**当前账本**走（切账本后 layout 换 key，本页重挂）；模板跟着**账号**走。
+ * 模板在这里维护（新建 / 存为模板 / 编辑 / 删除），**选用**则发生在「新建账本」弹窗里。
+ * <p>分类列表直接用 shell.categories 这份缓存当唯一数据源：改完只要 reloadCategories()，
+ * 「记一笔」下拉、流水页筛选与本页会一起更新。
  */
 
 const shell = useShell()
@@ -31,7 +34,6 @@ const GROUPS: { type: TxType; title: string; short: string }[] = [
 ]
 
 const loading = ref(false)
-const saving = ref(false)
 const busy = ref(false)
 
 /* ---------- 模板 ---------- */
@@ -41,7 +43,9 @@ const BUILTIN_ID = 0
 
 const templates = ref<CategoryTemplate[]>([])
 const templateId = ref<number>(BUILTIN_ID)
-const applying = ref(false)
+const templateDialogVisible = ref(false)
+const editingTemplate = ref<CategoryTemplate | null>(null)
+const savingTemplate = ref(false)
 
 const selectedTemplate = computed(
   () => templates.value.find((t) => t.id === templateId.value) ?? templates.value[0] ?? null,
@@ -67,40 +71,45 @@ async function loadTemplates(): Promise<void> {
   }
 }
 
-/** 应用模板会换掉全部分类，账本里的 categoryTemplateId 也变了，两处都要刷新 */
-async function refreshAfterApply(): Promise<void> {
-  await shell.reloadCategories()
+/** 删模板会把引用它的账本指回内置，所以 books 也要重拉 */
+async function reloadBooks(): Promise<void> {
   auth.setBooks(await listBooks().catch(() => auth.books))
 }
 
-async function onApplyTemplate(): Promise<void> {
-  const template = selectedTemplate.value
-  if (!template || applying.value) return
-  const confirmed = await ElMessageBox.confirm(
-    `用「${template.name}」的 ${template.items.length} 个分类**替换**当前账本的全部分类。\n` +
-      '只允许在没有流水的账本上换模板；换完后原有分类（含你手工改过的）会被覆盖。',
-    '应用模板',
-    { type: 'warning', confirmButtonText: '替换', cancelButtonText: '取消' },
-  )
-    .then(() => true)
-    .catch(() => false)
-  if (!confirmed) return
+function onCreateTemplate(): void {
+  editingTemplate.value = null
+  templateDialogVisible.value = true
+}
 
-  applying.value = true
+function onEditTemplate(): void {
+  const template = selectedTemplate.value
+  if (!template || template.builtin) return
+  editingTemplate.value = template
+  templateDialogVisible.value = true
+}
+
+async function onTemplateSubmit(payload: { name: string; items: TemplateItemInput[] }): Promise<void> {
+  if (savingTemplate.value) return
+  savingTemplate.value = true
   try {
-    await applyTemplate(template.id)
-    await refreshAfterApply()
-    ElMessage.success(`已应用「${template.name}」`)
+    const template = editingTemplate.value
+    const saved = template
+      ? await updateTemplate(template.id, payload.name, payload.items)
+      : await createTemplate(payload.name, payload.items)
+    await loadTemplates()
+    templateId.value = saved.id
+    templateDialogVisible.value = false
+    ElMessage.success(template ? `已保存「${saved.name}」` : `已新建模板「${saved.name}」`)
   } catch {
-    // 有流水时后端 400（提示已由拦截器弹出）
+    // 重名等 400 已由拦截器弹出，弹窗保持打开让用户改
   } finally {
-    applying.value = false
+    savingTemplate.value = false
   }
 }
 
 async function onSaveAsTemplate(): Promise<void> {
   const result = await ElMessageBox.prompt(
-    '把当前账本的分类存成一个模板，以后可以在任意账本上一键套用。',
+    '把当前账本的分类复制成一个模板，以后新建账本时可以直接选它。',
     '存为模板',
     {
       confirmButtonText: '保存',
@@ -116,26 +125,6 @@ async function onSaveAsTemplate(): Promise<void> {
     await loadTemplates()
     templateId.value = created.id
     ElMessage.success(`已存为模板「${created.name}」`)
-  } catch {
-    // 重名等 400 已由拦截器弹出
-  }
-}
-
-async function onRenameTemplate(): Promise<void> {
-  const template = selectedTemplate.value
-  if (!template || template.builtin) return
-  const result = await ElMessageBox.prompt('给模板换一个名字', '重命名模板', {
-    confirmButtonText: '保存',
-    cancelButtonText: '取消',
-    inputValue: template.name,
-    inputValidator: (value: string) => (value?.trim() ? true : '模板名不能为空'),
-  }).catch(() => null)
-  if (!result) return
-
-  try {
-    await renameTemplate(template.id, result.value.trim())
-    await loadTemplates()
-    ElMessage.success('已重命名')
   } catch {
     // 重名等 400 已由拦截器弹出
   }
@@ -157,12 +146,14 @@ async function onDeleteTemplate(): Promise<void> {
     await deleteTemplate(template.id)
     templateId.value = BUILTIN_ID
     await loadTemplates()
-    await refreshAfterApply()
+    await reloadBooks()
     ElMessage.success('已删除模板')
   } catch {
     // 提示已由拦截器弹出
   }
 }
+
+/* ---------- 分类 ---------- */
 
 const list = computed(() => shell.categories.value)
 function byType(type: TxType): Category[] {
@@ -170,15 +161,10 @@ function byType(type: TxType): Category[] {
 }
 
 const dialogVisible = ref(false)
-const editingId = ref<number | null>(null)
-const form = reactive({
-  name: '',
-  type: 'expense' as TxType,
-  icon: 'other',
-  color: 'orange',
-})
-
-const dialogTitle = computed(() => (editingId.value === null ? '新增分类' : '编辑分类'))
+const editingCategory = ref<Category | null>(null)
+const formType = ref<TxType>('expense')
+const formInitial = ref<{ name: string; icon: string | null; color: string | null } | null>(null)
+const saving = ref(false)
 
 async function refresh(): Promise<void> {
   loading.value = true
@@ -190,42 +176,37 @@ async function refresh(): Promise<void> {
 }
 
 function openCreate(type: TxType): void {
-  editingId.value = null
-  form.name = ''
-  form.type = type
-  form.icon = 'other'
-  form.color = type === 'expense' ? 'orange' : 'green'
+  editingCategory.value = null
+  formType.value = type
+  formInitial.value = null
   dialogVisible.value = true
 }
 
 function openEdit(category: Category): void {
-  editingId.value = category.id
-  form.name = category.name
-  form.type = category.type
-  form.icon = category.icon ?? 'other'
-  form.color = category.color ?? 'gray'
+  editingCategory.value = category
+  formType.value = category.type
+  formInitial.value = { name: category.name, icon: category.icon, color: category.color }
   dialogVisible.value = true
 }
 
-async function onSubmit(): Promise<void> {
-  const name = form.name.trim()
-  if (!name) {
-    ElMessage.warning('分类名不能为空')
-    return
-  }
+async function onCategorySubmit(payload: {
+  name: string
+  type: TxType
+  icon: string
+  color: string
+}): Promise<void> {
   if (saving.value) return
   saving.value = true
-  const creating = editingId.value === null
+  const editing = editingCategory.value
   try {
-    const req = { name, type: form.type, icon: form.icon, color: form.color }
-    if (creating) {
-      await createCategory(req)
+    if (editing) {
+      await updateCategory(editing.id, payload)
     } else {
-      await updateCategory(editingId.value as number, req)
+      await createCategory(payload)
     }
     dialogVisible.value = false
     await shell.reloadCategories()
-    ElMessage.success(creating ? '已新增分类' : '已保存')
+    ElMessage.success(editing ? '已保存' : '已新增分类')
   } catch {
     // 分类名重复等 400 由拦截器统一弹出，弹窗保持打开让用户改
   } finally {
@@ -267,7 +248,7 @@ onMounted(async () => {
     <div class="page-head">
       <h2 class="page-title">分类</h2>
       <p class="page-desc">
-        分类属于<b>当前账本</b>，换账本就换一套；模板属于<b>你的账号</b>，可一键套用到任意账本。
+        分类属于<b>当前账本</b>，换账本就换一套；模板属于<b>你的账号</b>，新建账本时可以直接选一套。
       </p>
     </div>
 
@@ -289,19 +270,17 @@ onMounted(async () => {
           />
         </el-select>
 
-        <el-button type="primary" :loading="applying" @click="onApplyTemplate">
-          应用到当前账本
-        </el-button>
+        <el-button type="primary" @click="onCreateTemplate">新建模板</el-button>
         <el-button @click="onSaveAsTemplate">存为模板</el-button>
-        <el-button :disabled="selectedIsBuiltin" @click="onRenameTemplate">重命名</el-button>
+        <el-button :disabled="selectedIsBuiltin" @click="onEditTemplate">编辑</el-button>
         <el-button type="danger" plain :disabled="selectedIsBuiltin" @click="onDeleteTemplate">
           删除
         </el-button>
       </div>
 
       <p class="tpl-tip">
-        「应用到当前账本」会用模板的分类<b>替换</b>现有分类，所以只允许在<b>没有流水</b>的账本上操作；
-        「存为模板」是把当前账本的分类复制成一个新模板。
+        「新建模板」自己排分类（支出、收入两张卡片）；「存为模板」把当前账本的分类复制成新模板。
+        模板在<b>新建账本</b>时选用，账本一旦有了流水就不能再换。
       </p>
     </section>
 
@@ -330,66 +309,21 @@ onMounted(async () => {
       </div>
     </section>
 
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="min(460px, 92vw)" destroy-on-close>
-      <el-form label-position="top" @submit.prevent="onSubmit">
-        <el-form-item label="分类名">
-          <el-input
-            v-model="form.name"
-            maxlength="50"
-            show-word-limit
-            placeholder="如：打印费"
-            @keydown.enter.prevent="onSubmit"
-          />
-        </el-form-item>
+    <CategoryFormDialog
+      v-model="dialogVisible"
+      :type="formType"
+      :initial="formInitial"
+      :title="editingCategory ? '编辑分类' : undefined"
+      :saving="saving"
+      @submit="onCategorySubmit"
+    />
 
-        <el-form-item v-if="editingId === null" label="收支方向">
-          <el-radio-group v-model="form.type">
-            <el-radio-button value="expense">支出</el-radio-button>
-            <el-radio-button value="income">收入</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item label="图标">
-          <div class="picker">
-            <button
-              v-for="opt in ICON_CHOICES"
-              :key="opt.key"
-              type="button"
-              class="pick"
-              :class="{ active: form.icon === opt.key }"
-              :title="opt.label"
-              @click="form.icon = opt.key"
-            >
-              {{ opt.emoji }}
-            </button>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="颜色">
-          <div class="picker">
-            <button
-              v-for="opt in COLOR_CHOICES"
-              :key="opt.key"
-              type="button"
-              class="pick color"
-              :class="{ active: form.color === opt.key }"
-              :title="opt.label"
-              :style="{ background: opt.hex }"
-              @click="form.color = opt.key"
-            />
-          </div>
-        </el-form-item>
-
-        <p v-if="editingId !== null" class="dialog-tip">
-          收支方向创建后不能改：改了会让这个分类下的历史流水收支方向失真。
-        </p>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="onSubmit">保存</el-button>
-      </template>
-    </el-dialog>
+    <TemplateFormDialog
+      v-model="templateDialogVisible"
+      :template="editingTemplate"
+      :saving="savingTemplate"
+      @submit="onTemplateSubmit"
+    />
   </div>
 </template>
 
@@ -511,41 +445,6 @@ onMounted(async () => {
 .cat-ops {
   display: flex;
   flex: none;
-}
-
-.picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.pick {
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  font-size: 16px;
-  line-height: 1;
-  border-radius: 8px;
-  border: 1px solid var(--el-border-color);
-  background: var(--el-bg-color);
-  cursor: pointer;
-}
-
-.pick.color {
-  border-width: 3px;
-  border-color: transparent;
-}
-
-.pick.active {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 2px var(--el-color-primary-light-7);
-}
-
-.dialog-tip {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--el-text-color-secondary);
 }
 
 @media (max-width: 767px) {
