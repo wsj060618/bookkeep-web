@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
+import CategoryPieChart from '../components/CategoryPieChart.vue'
 import { colorOf, iconOf } from '../utils/category'
 import { useShell } from '../composables/shell'
-import type { CategoryStat, Summary } from '../types/api'
+import type { CategoryStat, Summary, TxType } from '../types/api'
 
 /**
  * 统计页：按月看收支与分类占比。
+ * 占比支持**支出 / 收入**两个方向（后端 `/statistics/category?type=` 早就支持，只是原来只请求了支出），
+ * 展示形式支持条形图 / 饼图 / 环形图（后两者走 ECharts）。
  * 改过流水（txVersion 变化）后要重拉，否则从流水页回来数字是旧的。
  */
 
@@ -16,19 +19,38 @@ const loading = ref(false)
 /** 空字符串 = 当月，由后端按 Asia/Shanghai 决定；回显后用后端返回的 month */
 const month = ref('')
 const summary = ref<Summary | null>(null)
-const categories = ref<CategoryStat[]>([])
+/** 一次把两个方向都拉回来：切「支出/收入」不该再等一次请求 */
+const stats = ref<Record<TxType, CategoryStat[]>>({ expense: [], income: [] })
+
+const direction = ref<TxType>('expense')
+type ChartType = 'bar' | 'pie' | 'donut'
+const chartType = ref<ChartType>('bar')
+
+const current = computed(() => stats.value[direction.value])
+const directionLabel = computed(() => (direction.value === 'expense' ? '支出' : '收入'))
+const panelTitle = computed(() => `${directionLabel.value}分类占比`)
+
+/** 本方向合计：口径与后端 amount 一致（两位小数字符串相加用分算，避免浮点误差） */
+const total = computed(() => {
+  const cents = current.value.reduce((sum, item) => sum + Math.round(Number(item.amount) * 100), 0)
+  return (cents / 100).toFixed(2)
+})
 
 async function load(): Promise<void> {
   loading.value = true
   try {
     const m = month.value || undefined
-    const [resp, stats] = await Promise.all([fetchSummary(m), fetchCategoryStat(m, 'expense')])
+    const [resp, expense, income] = await Promise.all([
+      fetchSummary(m),
+      fetchCategoryStat(m, 'expense'),
+      fetchCategoryStat(m, 'income'),
+    ])
     summary.value = resp
-    categories.value = stats
+    stats.value = { expense, income }
     month.value = resp.month
   } catch {
     summary.value = null
-    categories.value = []
+    stats.value = { expense: [], income: [] }
   } finally {
     loading.value = false
   }
@@ -48,7 +70,7 @@ onMounted(() => {
     <div class="page-head">
       <div>
         <h2 class="page-title">收支统计</h2>
-        <p class="page-desc">按月汇总当前账本；分类占比只统计支出。</p>
+        <p class="page-desc">按月汇总当前账本；分类占比可看支出，也可看收入。</p>
       </div>
       <el-date-picker
         v-model="month"
@@ -82,24 +104,48 @@ onMounted(() => {
 
     <section v-loading="loading" class="panel">
       <div class="panel-head">
-        <h3 class="panel-title">支出分类占比</h3>
-        <span class="panel-month">{{ summary?.month ?? '' }}</span>
-      </div>
+        <div class="panel-heading">
+          <h3 class="panel-title">{{ panelTitle }}</h3>
+          <span class="panel-total">合计 ￥{{ total }}</span>
+          <span class="panel-month">{{ summary?.month ?? '' }}</span>
+        </div>
 
-      <div v-if="categories.length" class="cat-grid">
-        <div v-for="c in categories" :key="c.categoryId" class="cat-row">
-          <span class="cat-name">{{ iconOf(c.categoryIcon) }} {{ c.categoryName }}</span>
-          <span class="cat-bar">
-            <span
-              class="cat-bar-inner"
-              :style="{ width: `${c.percent}%`, background: colorOf(c.categoryColor) }"
-            />
-          </span>
-          <span class="cat-amount">￥{{ c.amount }}</span>
-          <span class="cat-percent">{{ c.percent }}%</span>
+        <div class="panel-switches">
+          <el-radio-group v-model="direction" size="small">
+            <el-radio-button value="expense">支出</el-radio-button>
+            <el-radio-button value="income">收入</el-radio-button>
+          </el-radio-group>
+
+          <el-radio-group v-model="chartType" size="small">
+            <el-radio-button value="bar">条形图</el-radio-button>
+            <el-radio-button value="pie">饼图</el-radio-button>
+            <el-radio-button value="donut">环形图</el-radio-button>
+          </el-radio-group>
         </div>
       </div>
-      <el-empty v-else description="这个月还没有支出" />
+
+      <template v-if="current.length">
+        <CategoryPieChart
+          v-if="chartType !== 'bar'"
+          :items="current"
+          :donut="chartType === 'donut'"
+        />
+
+        <div v-else class="cat-grid">
+          <div v-for="c in current" :key="c.categoryId" class="cat-row">
+            <span class="cat-name">{{ iconOf(c.categoryIcon) }} {{ c.categoryName }}</span>
+            <span class="cat-bar">
+              <span
+                class="cat-bar-inner"
+                :style="{ width: `${c.percent}%`, background: colorOf(c.categoryColor) }"
+              />
+            </span>
+            <span class="cat-amount">￥{{ c.amount }}</span>
+            <span class="cat-percent">{{ c.percent }}%</span>
+          </div>
+        </div>
+      </template>
+      <el-empty v-else :description="`这个月还没有${directionLabel}`" />
     </section>
   </div>
 </template>
@@ -182,9 +228,18 @@ onMounted(() => {
 
 .panel-head {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px 12px;
   margin-bottom: 12px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
 }
 
 .panel-title {
@@ -192,9 +247,21 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.panel-total {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-regular);
+}
+
 .panel-month {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+.panel-switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .cat-grid {
