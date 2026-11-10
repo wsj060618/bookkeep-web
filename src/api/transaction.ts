@@ -1,5 +1,5 @@
-import type { PageResult, Transaction, TransactionQuery, TransactionReq } from '../types/api'
-import { del, get, getFile, post, put, type DownloadFile } from './request'
+import type { ImportResult, PageResult, Transaction, TransactionQuery, TransactionReq } from '../types/api'
+import { del, get, getFile, post, postForm, put, type DownloadFile } from './request'
 
 /** 流水接口，对应后端 TransactionController。按当前账本，不传 bookId */
 
@@ -34,9 +34,24 @@ export function deleteTransactions(ids: number[]): Promise<number> {
 }
 
 /**
- * GET /api/transactions/export —— 成功是 CSV 文件流，失败仍是 200 + JSON 信封。
+ * GET /api/transactions/export —— 成功是文件流（CSV / xlsx），失败仍是 200 + JSON 信封。
+ * `format=xlsx` 是带汇总与分类柱状图的真 Excel；默认 csv。
  * 调用方拿到的是 {blob, filename}，用 request.ts 的 saveBlob 落盘。
  */
-export function exportTransactions(params: { startDate?: string; endDate?: string }): Promise<DownloadFile> {
+export function exportTransactions(params: {
+  startDate?: string
+  endDate?: string
+  format?: 'csv' | 'xlsx'
+}): Promise<DownloadFile> {
   return getFile('/transactions/export', { ...params })
+}
+
+/**
+ * POST /api/transactions/import（multipart）—— CSV / xlsx。
+ * 行级失败不阻塞其它行，返回 `{success, failed:[{line, reason}]}`。
+ */
+export function importTransactions(file: File): Promise<ImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  return postForm<ImportResult>('/transactions/import', form)
 }

@@ -168,15 +168,24 @@ function byType(type: TxType): Category[] {
 const selectedCats = ref<number[]>([])
 const batchBusy = ref(false)
 
-const allCatsSelected = computed(
-  () => list.value.length > 0 && selectedCats.value.length === list.value.length,
-)
-const someCatsSelected = computed(
-  () => selectedCats.value.length > 0 && selectedCats.value.length < list.value.length,
-)
-
-function toggleAllCats(value: boolean | string | number): void {
-  selectedCats.value = value ? list.value.map((c) => c.id) : []
+/** 某一组（支出 / 收入）的勾选状态与全选 */
+function groupIds(type: TxType): number[] {
+  return byType(type).map((c) => c.id)
+}
+function groupAllSelected(type: TxType): boolean {
+  const ids = groupIds(type)
+  return ids.length > 0 && ids.every((id) => selectedCats.value.includes(id))
+}
+function groupSomeSelected(type: TxType): boolean {
+  const ids = groupIds(type)
+  const picked = ids.filter((id) => selectedCats.value.includes(id)).length
+  return picked > 0 && picked < ids.length
+}
+/** 只动这一组的勾选，另一组保持原样 */
+function toggleGroup(type: TxType, checked: boolean | string | number): void {
+  const ids = groupIds(type)
+  const rest = selectedCats.value.filter((id) => !ids.includes(id))
+  selectedCats.value = checked ? [...rest, ...ids] : rest
 }
 
 async function onBatchDeleteCats(): Promise<void> {
@@ -346,14 +355,6 @@ onMounted(async () => {
     </section>
 
     <section class="batch-bar">
-      <el-checkbox
-        :model-value="allCatsSelected"
-        :indeterminate="someCatsSelected"
-        :disabled="archived || list.length === 0"
-        @change="toggleAllCats"
-      >
-        全选
-      </el-checkbox>
       <span class="batch-count">已选 {{ selectedCats.length }} / {{ list.length }} 个</span>
       <el-button
         type="danger"
@@ -369,7 +370,18 @@ onMounted(async () => {
 
     <section v-for="group in GROUPS" :key="group.type" class="cat-card">
       <header class="cat-head">
-        <h3 class="cat-title">{{ group.title }}</h3>
+        <div class="cat-head-left">
+          <!-- 全选按收支分组：支出、收入各自勾自己的，不混在一起 -->
+          <el-checkbox
+            :model-value="groupAllSelected(group.type)"
+            :indeterminate="groupSomeSelected(group.type)"
+            :disabled="archived || byType(group.type).length === 0"
+            @change="(checked: boolean | string | number) => toggleGroup(group.type, checked)"
+          >
+            全选
+          </el-checkbox>
+          <h3 class="cat-title">{{ group.title }}</h3>
+        </div>
         <el-button size="small" type="primary" plain :disabled="archived" @click="openCreate(group.type)">
           ＋ 新增{{ group.short }}
         </el-button>
@@ -473,6 +485,13 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.cat-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .cat-title {

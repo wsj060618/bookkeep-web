@@ -282,6 +282,18 @@ export interface ReportTransaction {
   balanceAfter: string
 }
 
+/** 导入流水的结果（POST /api/transactions/import）：行级失败带行号与原因 */
+export interface ImportFailedRow {
+  /** 文件行号（1 基，含表头），和 Excel 左侧一致 */
+  line: number
+  reason: string
+}
+
+export interface ImportResult {
+  success: number
+  failed: ImportFailedRow[]
+}
+
 /** 单本账本在公示页上的内容（一条链接可以带多本，所以是数组里的一项） */
 export interface PublicBookReport {
   bookId: number

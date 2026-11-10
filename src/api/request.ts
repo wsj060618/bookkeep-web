@@ -87,6 +87,16 @@ export async function post<T>(url: string, body?: unknown): Promise<T> {
   return response.data.data
 }
 
+/**
+ * multipart 上传（流水导入）。
+ * <p>不设 Content-Type：浏览器会自动带上带 boundary 的 multipart/form-data，
+ * 手写反而会把 boundary 写丢。导入解析比普通请求慢，超时放宽到 60s。
+ */
+export async function postForm<T>(url: string, form: FormData): Promise<T> {
+  const response = await http.post<ApiResult<T>>(url, form, { timeout: 60_000 })
+  return response.data.data
+}
+
 export async function put<T>(url: string, body?: unknown): Promise<T> {
   const response = await http.put<ApiResult<T>>(url, body)
   return response.data.data

@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteTransaction, deleteTransactions, exportTransactions, pageTransactions } from '../api/transaction'
+import {
+  deleteTransaction,
+  deleteTransactions,
+  exportTransactions,
+  importTransactions,
+  pageTransactions,
+} from '../api/transaction'
 import { saveBlob } from '../api/request'
 import { useShell } from '../composables/shell'
 import { useAuthStore } from '../stores/auth'
 import TxItem from '../components/TxItem.vue'
-import type { Transaction, TransactionQuery, TxType } from '../types/api'
+import type { ImportResult, Transaction, TransactionQuery, TxType } from '../types/api'
 
 /**
  * 流水页：筛选 + 分页 + 导出 + 改/删。
@@ -156,14 +162,14 @@ function onSizeChange(): void {
   void loadList()
 }
 
-async function onExport(): Promise<void> {
+async function onExport(format: 'csv' | 'xlsx'): Promise<void> {
   if (exporting.value) return
   exporting.value = true
   try {
     // 有日期筛选就导这一段，没有就整本；区间由后端解释（含首尾）
     const params = dateRange.value
-      ? { startDate: dateRange.value[0], endDate: dateRange.value[1] }
-      : {}
+      ? { startDate: dateRange.value[0], endDate: dateRange.value[1], format }
+      : { format }
     const file = await exportTransactions(params)
     saveBlob(file.blob, file.filename)
     ElMessage.success('已开始下载')
@@ -171,6 +177,56 @@ async function onExport(): Promise<void> {
     // 参数错误（如区间颠倒）时后端回的是 JSON 信封，request.ts 已经弹过提示
   } finally {
     exporting.value = false
+  }
+}
+
+/* ---------- 导入 ---------- */
+
+const importVisible = ref(false)
+const importing = ref(false)
+const pickedFile = ref<File | null>(null)
+const importResult = ref<ImportResult | null>(null)
+
+function openImport(): void {
+  pickedFile.value = null
+  importResult.value = null
+  importVisible.value = true
+}
+
+function onPickFile(uploadFile: { raw?: File }): void {
+  pickedFile.value = uploadFile.raw ?? null
+  importResult.value = null
+}
+
+/** 模板就是一行表头 + 一行示例，用户照着填最省事 */
+function downloadTemplate(): void {
+  const csv =
+    '\uFEFF日期,类型,分类,金额,备注\r\n' +
+    '2026-09-05,收入,收取班费,1900.00,全班 38 人 × 50\r\n' +
+    '2026-09-20,支出,聚餐,620.00,中秋聚餐\r\n'
+  saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), '流水导入模板.csv')
+}
+
+async function onImport(): Promise<void> {
+  if (!pickedFile.value || importing.value) return
+  importing.value = true
+  try {
+    importResult.value = await importTransactions(pickedFile.value)
+    const result = importResult.value
+    if (result.success > 0) {
+      ElMessage.success(`已导入 ${result.success} 笔`)
+      // 让列表与统计页都刷新（版本号 +1）
+      shell.notifyTxChanged()
+    } else {
+      ElMessage.warning('没有可导入的行，请按失败原因修改后重传')
+    }
+    if (result.failed.length === 0) {
+      importVisible.value = false
+    }
+  } catch {
+    // 文件为空 / 格式不支持等 400 已由拦截器弹出
+  } finally {
+    importing.value = false
   }
 }
 
@@ -246,9 +302,18 @@ onMounted(() => {
 
       <div class="filter-actions">
         <el-button @click="onReset">重置</el-button>
-        <el-button type="primary" plain :loading="exporting" @click="onExport">
-          {{ dateRange ? '导出所选区间' : '导出全部' }}
-        </el-button>
+        <el-button :disabled="archived" @click="openImport">导入</el-button>
+        <el-dropdown trigger="click" @command="onExport">
+          <el-button type="primary" plain :loading="exporting">
+            {{ dateRange ? '导出所选区间 ▾' : '导出 ▾' }}
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="csv">CSV（通用）</el-dropdown-item>
+              <el-dropdown-item command="xlsx">Excel（带统计图）</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </section>
 
@@ -302,6 +367,56 @@ onMounted(() => {
         @current-change="onPageChange"
       />
     </footer>
+
+    <el-dialog v-model="importVisible" title="导入流水" width="min(560px, 94vw)">
+      <p class="import-tip">
+        支持 <b>CSV</b> 与 <b>Excel（.xlsx）</b>，列固定为：日期 / 类型 / 分类 / 金额 / 备注。
+        类型填「收入」「支出」（也认 income / expense）；分类必须已经在当前账本里，
+        <b>不会自动新建分类</b>。
+      </p>
+
+      <div class="import-row">
+        <el-upload
+          :auto-upload="false"
+          :show-file-list="false"
+          accept=".csv,.xlsx,.xls"
+          :on-change="onPickFile"
+        >
+          <el-button>选择文件</el-button>
+        </el-upload>
+        <el-button link type="primary" @click="downloadTemplate">下载模板</el-button>
+        <span v-if="pickedFile" class="import-file">{{ pickedFile.name }}</span>
+      </div>
+
+      <div v-if="importResult" class="import-result">
+        <p class="import-summary">
+          成功导入 <b>{{ importResult.success }}</b> 笔<template v-if="importResult.failed.length">
+            ，失败 <b>{{ importResult.failed.length }}</b> 行（改好再传一次即可）
+          </template>
+        </p>
+        <el-table
+          v-if="importResult.failed.length"
+          :data="importResult.failed"
+          size="small"
+          max-height="240"
+        >
+          <el-table-column prop="line" label="行号" width="80" />
+          <el-table-column prop="reason" label="原因" />
+        </el-table>
+      </div>
+
+      <template #footer>
+        <el-button @click="importVisible = false">关闭</el-button>
+        <el-button
+          type="primary"
+          :disabled="!pickedFile"
+          :loading="importing"
+          @click="onImport"
+        >
+          开始导入
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -378,6 +493,36 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   margin-top: 16px;
+}
+
+.import-tip {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--el-text-color-secondary);
+}
+
+.import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.import-file {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+}
+
+.import-result {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.import-summary {
+  margin: 0 0 8px;
+  font-size: 13px;
 }
 
 @media (max-width: 767px) {
