@@ -647,10 +647,17 @@ onMounted(() => {
 }
 
 @media (max-width: 767px) {
+  /* 第一行两个下拉各占一半：挤成三等份时「全部收支 / 全部分类」会被截成省略号 */
   .filter-type,
-  .filter-category,
+  .filter-category {
+    flex: 1 1 calc(50% - 4px);
+    width: auto;
+    min-width: 0;
+  }
+
+  /* 搜备注独占一行 */
   .filter-keyword {
-    flex: 1;
+    flex: 1 1 100%;
     width: auto;
   }
 
