@@ -64,15 +64,12 @@ describe('receipt api', () => {
     expect(getFile).toHaveBeenCalledWith('/transactions/7/receipts/3')
   })
 
-  it('导出：账本级带区间、单笔不带参数', async () => {
+  it('导出：账本级带区间（单笔改成逐张下载图片，不再有 zip 接口）', async () => {
     await api.exportBookReceipts({ startDate: '2026-09-01', endDate: '2026-09-30' })
     expect(getFile).toHaveBeenCalledWith('/transactions/receipts/export', {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     })
-
-    await api.exportTransactionReceipts(7)
-    expect(getFile).toHaveBeenCalledWith('/transactions/7/receipts/export')
   })
 
   it('公示页图片 URL：拼在公开路径下并编码 token', () => {

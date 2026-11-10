@@ -49,11 +49,6 @@ export function exportBookReceipts(params: {
   return getFile('/transactions/receipts/export', { ...params })
 }
 
-/** GET /api/transactions/{id}/receipts/export —— 只打这一笔 */
-export function exportTransactionReceipts(transactionId: number): Promise<DownloadFile> {
-  return getFile(`/transactions/${transactionId}/receipts/export`)
-}
-
 /** 公示页图片是匿名只读路径，可以直接拼给 `<img src>`（不带 token） */
 export function publicReceiptUrl(shareToken: string, receiptId: number): string {
   return `/api/public/report/${encodeURIComponent(shareToken)}/receipts/${receiptId}`

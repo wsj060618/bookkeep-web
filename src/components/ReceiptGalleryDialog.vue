@@ -3,20 +3,30 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deleteReceipt,
-  exportTransactionReceipts,
   fetchReceiptBlob,
   listReceipts,
   renameReceipt,
   uploadReceipt,
 } from '../api/receipt'
 import { saveBlob } from '../api/request'
-import { RECEIPT_ACCEPT, RECEIPT_MAX_PER_TRANSACTION, defaultReceiptTitle, formatSize, validateReceiptFile } from '../utils/receipt'
+import {
+  RECEIPT_ACCEPT,
+  RECEIPT_MAX_PER_TRANSACTION,
+  defaultReceiptTitle,
+  formatSize,
+  validateReceiptFile,
+} from '../utils/receipt'
 import type { Receipt, Transaction } from '../types/api'
 
 /**
- * 一笔流水的票据图集：看缩略图、改标题、删除、再加几张、只导出这一笔。
- * <p>登录态接口不能用 `<img src>` 直链（浏览器不会带 Authorization），
- * 所以每张图先取 Blob 再转 objectURL；关弹窗时统一 revoke，避免内存泄漏。
+ * 一笔流水的票据图集：看缩略图、改名、删除、再加几张、把这一笔的图下载下来。
+ *
+ * <p>**改动是「草稿」语义**：新增的图先本地预览、改标题、删除都只改本地状态，
+ * 点「保存」才统一提交（删除 → 改名 → 上传）。直接关掉弹窗等于放弃，什么都不会写库——
+ * 之前是选完图立刻上传，用户点 × 关掉后发现图已经加上了，这不符合直觉。
+ *
+ * <p>登录态接口不能用 `<img src>` 直链（浏览器不会带 Authorization），所以每张图先取 Blob
+ * 再转 objectURL；关弹窗时统一 revoke。注意 nginx 的 CSP `img-src` 必须含 `blob:`。
  */
 const props = defineProps<{
   modelValue: boolean
@@ -26,9 +36,18 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
-  /** 票据增删改后通知父组件刷新列表（徽标数字要变） */
+  /** 保存成功后通知父组件刷新列表（徽标数字要变） */
   changed: []
 }>()
+
+interface PendingReceipt {
+  file: File
+  title: string
+  /** 本地预览用的 objectURL */
+  url: string
+  /** 客户端生成的临时 key，用来做 v-for 的 key 与删除 */
+  key: string
+}
 
 const visible = computed({
   get: () => props.modelValue,
@@ -36,20 +55,32 @@ const visible = computed({
 })
 
 const loading = ref(false)
-const uploading = ref(false)
+const saving = ref(false)
+/** 库里已有的票据（加载时的快照，删除/改名都以它为基准） */
 const receipts = ref<Receipt[]>([])
+/** 待上传的新图（只在本弹窗内有效） */
+const pending = ref<PendingReceipt[]>([])
+/** 客户端标题；已有票据改名也走这里，保存时统一提交 */
 const titles = reactive<Record<number, string>>({})
-/** receiptId → objectURL */
+/** 标记删除的已有票据 id（保存时才真的删） */
+const removed = reactive<Set<number>>(new Set())
+/** receiptId → objectURL（仅用于显示） */
 const previews = reactive<Record<number, string>>({})
+/** receiptId → 原始 Blob（下载时直接用，不必再从 objectURL 取） */
+const blobs = reactive<Record<number, Blob>>({})
 
 function revokeAll(): void {
   Object.values(previews).forEach((url) => URL.revokeObjectURL(url))
   Object.keys(previews).forEach((key) => delete previews[Number(key)])
+  Object.keys(blobs).forEach((key) => delete blobs[Number(key)])
+  pending.value.forEach((item) => URL.revokeObjectURL(item.url))
 }
 
-function clearState(): void {
+function resetState(): void {
   revokeAll()
   receipts.value = []
+  pending.value = []
+  removed.clear()
   Object.keys(titles).forEach((key) => delete titles[Number(key)])
 }
 
@@ -57,20 +88,21 @@ async function load(): Promise<void> {
   const tx = props.transaction
   if (!tx) return
   loading.value = true
-  clearState()
+  resetState()
   try {
     receipts.value = await listReceipts(tx.id)
     receipts.value.forEach((r) => {
       titles[r.id] = r.title
     })
-    // 逐张取图：失败的那张就留空白，不影响其他张
+    // 逐张取图：失败的那张留占位，不影响其他张
     await Promise.all(
       receipts.value.map(async (r) => {
         try {
           const blob = await fetchReceiptBlob(tx.id, r.id)
+          blobs[r.id] = blob
           previews[r.id] = URL.createObjectURL(blob)
         } catch {
-          // 拦截器已经提示过，这里保持占位
+          // 拦截器已提示
         }
       }),
     )
@@ -79,143 +111,214 @@ async function load(): Promise<void> {
   }
 }
 
+/* ---------- 关闭时确认「有未保存的改动」 ---------- */
+
+const dirty = computed(() => {
+  if (pending.value.length > 0 || removed.size > 0) return true
+  return receipts.value.some((r) => !removed.has(r.id) && titles[r.id] !== r.title)
+})
+
+async function handleBeforeClose(): Promise<boolean> {
+  if (!dirty.value || saving.value) return true
+  try {
+    await ElMessageBox.confirm('有未保存的改动，关闭后将不会保存，确定放弃？', '放弃改动', {
+      type: 'warning',
+      confirmButtonText: '放弃',
+      cancelButtonText: '继续编辑',
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 watch(
   () => props.modelValue,
-  (open) => {
-    if (open) void load()
-    else clearState()
+  async (open) => {
+    if (open) await load()
+    else resetState()
   },
-  // immediate：万一父组件直接以「打开」状态挂载（比如从别处带参数跳进来），也要加载一次
-  { immediate: true },
 )
 
 onBeforeUnmount(revokeAll)
 
-const previewList = computed(() => receipts.value.map((r) => previews[r.id]).filter(Boolean) as string[])
+/* ---------- 展示 ---------- */
 
-async function saveTitle(receipt: Receipt): Promise<void> {
-  const tx = props.transaction
-  const next = (titles[receipt.id] ?? '').trim()
-  if (!tx || !next || next === receipt.title) {
-    titles[receipt.id] = receipt.title
-    return
-  }
-  if (next.length > 30) {
-    ElMessage.warning('票据标题不能超过 30 个字')
-    titles[receipt.id] = receipt.title
-    return
-  }
-  try {
-    await renameReceipt(tx.id, receipt.id, next)
-    receipt.title = next
-    ElMessage.success('已改名')
-    emit('changed')
-  } catch {
-    titles[receipt.id] = receipt.title
-  }
+/** 列表里还剩的已有票据（排除已标记删除的） */
+const kept = computed(() => receipts.value.filter((r) => !removed.has(r.id)))
+const previewList = computed(
+  () =>
+    [
+      ...kept.value.map((r) => previews[r.id]),
+      ...pending.value.map((item) => item.url),
+    ].filter(Boolean) as string[],
+)
+
+const canAddMore = computed(
+  () => kept.value.length + pending.value.length < RECEIPT_MAX_PER_TRANSACTION,
+)
+
+/* ---------- 编辑动作（都只改本地状态） ---------- */
+
+function removeSaved(receipt: Receipt): void {
+  removed.add(receipt.id)
+  delete titles[receipt.id]
 }
 
-async function remove(receipt: Receipt): Promise<void> {
-  const tx = props.transaction
-  if (!tx) return
-  const ok = await ElMessageBox.confirm(`确定删除「${receipt.title}」？文件会一起删掉。`, '删除票据', {
-    type: 'warning',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-  }).catch(() => false)
-  if (!ok) return
-  try {
-    await deleteReceipt(tx.id, receipt.id)
-    const url = previews[receipt.id]
-    if (url) URL.revokeObjectURL(url)
-    delete previews[receipt.id]
-    receipts.value = receipts.value.filter((r) => r.id !== receipt.id)
-    ElMessage.success('已删除')
-    emit('changed')
-  } catch {
-    // 拦截器已提示
-  }
+function undoRemove(receipt: Receipt): void {
+  removed.delete(receipt.id)
+  titles[receipt.id] = receipt.title
 }
 
-/** 选图：前端先按 MIME + 大小拦一遍，真正的判断（魔数）在后端 */
-async function onPick(event: Event): Promise<void> {
+function removePending(index: number): void {
+  URL.revokeObjectURL(pending.value[index].url)
+  pending.value.splice(index, 1)
+}
+
+function onPick(event: Event): void {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = '' // 允许连续选同一个文件
-  const tx = props.transaction
-  if (!tx || files.length === 0) return
+  if (files.length === 0) return
 
-  uploading.value = true
-  try {
-    for (const file of files) {
-      const error = validateReceiptFile(file, receipts.value.length)
-      if (error) {
-        ElMessage.warning(error)
-        continue
-      }
-      try {
-        await uploadReceipt(tx.id, file, defaultReceiptTitle(file.name))
-        ElMessage.success(`已添加「${defaultReceiptTitle(file.name)}」`)
-      } catch {
-        // 拦截器已提示（如后端判定不是图片）
-      }
+  for (const file of files) {
+    const error = validateReceiptFile(file, kept.value.length + pending.value.length)
+    if (error) {
+      ElMessage.warning(error)
+      continue
     }
-    await load()
-    emit('changed')
-  } finally {
-    uploading.value = false
+    pending.value.push({
+      file,
+      title: defaultReceiptTitle(file.name),
+      url: URL.createObjectURL(file),
+      key: `${file.name}-${file.size}-${Date.now()}-${pending.value.length}`,
+    })
   }
 }
 
-async function exportSingle(): Promise<void> {
+/* ---------- 保存：删除 → 改名 → 上传 ---------- */
+
+async function save(): Promise<void> {
   const tx = props.transaction
-  if (!tx) return
+  if (!tx || saving.value) return
+  saving.value = true
+  let failed = 0
   try {
-    const file = await exportTransactionReceipts(tx.id)
-    saveBlob(file.blob, file.filename)
-  } catch {
-    // 拦截器已提示（没有票据时是 400 + 文案）
+    for (const id of removed) {
+      try {
+        await deleteReceipt(tx.id, id)
+      } catch {
+        failed += 1
+      }
+    }
+    for (const receipt of receipts.value) {
+      if (removed.has(receipt.id)) continue
+      const next = (titles[receipt.id] ?? '').trim()
+      if (!next || next === receipt.title) continue
+      try {
+        await renameReceipt(tx.id, receipt.id, next)
+        receipt.title = next
+      } catch {
+        failed += 1
+      }
+    }
+    for (const item of pending.value) {
+      try {
+        await uploadReceipt(tx.id, item.file, item.title.trim() || undefined)
+      } catch {
+        failed += 1
+      }
+    }
+
+    if (failed > 0) {
+      ElMessage.warning(`有 ${failed} 项没保存成功，请重试`)
+      await load() // 重新拉一次，把已成功的部分对齐
+      emit('changed')
+      return
+    }
+    ElMessage.success('已保存')
+    emit('changed')
+    visible.value = false
+  } finally {
+    saving.value = false
+  }
+}
+
+/** 把这一笔的图片逐张下载（不再打包 zip：单笔通常 1–3 张，直接存图更直观） */
+async function downloadImages(): Promise<void> {
+  const tx = props.transaction
+  if (!tx || kept.value.length === 0) return
+  let failed = 0
+  for (const receipt of kept.value) {
+    try {
+      // 优先用打开时缓存的字节；没有就现取（缓存可能因为加载失败为空）
+      const blob = blobs[receipt.id] ?? (await fetchReceiptBlob(tx.id, receipt.id))
+      const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'
+      saveBlob(blob, `${tx.transDate}_${receipt.title}.${ext}`)
+      // 连续触发多次下载时，浏览器需要一点间隔才不会被合并/拦截
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    } catch {
+      failed += 1
+    }
+  }
+  if (failed > 0) {
+    ElMessage.warning(`有 ${failed} 张下载失败，可稍后重试`)
   }
 }
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="票据" width="min(560px, 94vw)" destroy-on-close>
+  <el-dialog
+    v-model="visible"
+    title="票据"
+    width="min(560px, 94vw)"
+    destroy-on-close
+    :before-close="(done: () => void) => handleBeforeClose().then((ok) => ok && done())"
+  >
     <div class="gallery-head">
       <span class="gallery-tip">
         {{ transaction?.categoryName }} · {{ transaction?.transDate }} · ￥{{ transaction?.amount }}
       </span>
-      <span class="gallery-limit">{{ receipts.length }} / {{ RECEIPT_MAX_PER_TRANSACTION }}</span>
+      <span class="gallery-limit">{{ kept.length + pending.length }} / {{ RECEIPT_MAX_PER_TRANSACTION }}</span>
     </div>
 
     <div v-loading="loading" class="gallery">
-      <div v-for="receipt in receipts" :key="receipt.id" class="card">
+      <!-- 库里已有的：删除/改名只改本地，点「保存」才提交 -->
+      <div
+        v-for="receipt in kept"
+        :key="receipt.id"
+        class="card"
+        :class="{ changed: titles[receipt.id] !== receipt.title }"
+      >
         <el-image
           v-if="previews[receipt.id]"
           class="thumb"
           :src="previews[receipt.id]"
           fit="cover"
           :preview-src-list="previewList"
-          :initial-index="receipts.findIndex((r) => r.id === receipt.id)"
+          :initial-index="kept.findIndex((r) => r.id === receipt.id)"
           preview-teleported
         />
         <div v-else class="thumb thumb-empty">图片加载失败</div>
 
-        <el-input
-          v-model="titles[receipt.id]"
-          size="small"
-          maxlength="30"
-          class="title-input"
-          @blur="saveTitle(receipt)"
-          @keyup.enter="saveTitle(receipt)"
-        />
+        <el-input v-model="titles[receipt.id]" size="small" maxlength="30" class="title-input" />
         <div class="meta">
           <span>{{ formatSize(receipt.sizeBytes) }}</span>
-          <el-button text size="small" type="danger" @click="remove(receipt)">删除</el-button>
+          <el-button text size="small" type="danger" @click="removeSaved(receipt)">删除</el-button>
         </div>
       </div>
 
-      <label v-if="receipts.length < RECEIPT_MAX_PER_TRANSACTION" class="add" :class="{ disabled: uploading }">
+      <!-- 本次新选的：还没上传 -->
+      <div v-for="(item, index) in pending" :key="item.key" class="card pending">
+        <img class="thumb" :src="item.url" alt="" />
+        <el-input v-model="item.title" size="small" maxlength="30" class="title-input" />
+        <div class="meta">
+          <span>{{ formatSize(item.file.size) }} · 待保存</span>
+          <el-button text size="small" type="danger" @click="removePending(index)">移除</el-button>
+        </div>
+      </div>
+
+      <label v-if="canAddMore" class="add">
         <input type="file" :accept="RECEIPT_ACCEPT" multiple hidden @change="onPick" />
         <span class="add-plus">+</span>
         <span class="add-text">添加图片</span>
@@ -223,11 +326,24 @@ async function exportSingle(): Promise<void> {
       </label>
     </div>
 
-    <div v-if="receipts.length === 0 && !loading" class="empty">这笔流水还没有票据</div>
+    <div v-if="removed.size > 0" class="undo">
+      <span>已标记删除 {{ removed.size }} 张</span>
+      <el-button
+        v-for="receipt in receipts.filter((r) => removed.has(r.id))"
+        :key="receipt.id"
+        text
+        size="small"
+        @click="undoRemove(receipt)"
+      >
+        撤销「{{ receipt.title }}」
+      </el-button>
+    </div>
+
+    <div v-if="kept.length + pending.length === 0 && !loading" class="empty">这笔流水还没有票据</div>
 
     <template #footer>
-      <el-button :disabled="receipts.length === 0" @click="exportSingle">导出这笔票据</el-button>
-      <el-button type="primary" @click="visible = false">完成</el-button>
+      <el-button :disabled="kept.length === 0" @click="downloadImages">下载图片</el-button>
+      <el-button type="primary" :loading="saving" :disabled="!dirty" @click="save">保存</el-button>
     </template>
   </el-dialog>
 </template>
@@ -256,11 +372,22 @@ async function exportSingle(): Promise<void> {
   padding: 8px;
   border-radius: 10px;
   background: var(--el-fill-color-lighter);
+  border: 1px solid transparent;
+}
+
+/* 改过标题的卡片给个提示，免得用户以为已经存了 */
+.card.changed {
+  border-color: var(--el-color-warning-light-5);
+}
+
+.card.pending {
+  border-color: var(--el-color-primary-light-7);
 }
 
 .thumb {
   width: 100%;
   height: 110px;
+  object-fit: cover;
   border-radius: 8px;
   background: #fff;
 }
@@ -295,11 +422,6 @@ async function exportSingle(): Promise<void> {
   color: var(--el-text-color-secondary);
 }
 
-.add.disabled {
-  pointer-events: none;
-  opacity: 0.6;
-}
-
 .add-plus {
   font-size: 22px;
   line-height: 1;
@@ -312,6 +434,16 @@ async function exportSingle(): Promise<void> {
 .add-hint {
   font-size: 11px;
   color: var(--el-text-color-placeholder);
+}
+
+.undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .empty {
