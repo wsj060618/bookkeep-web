@@ -115,4 +115,4 @@ npm run preview    # 本地预览 dist
 
 ## License
 
-MIT © 2026 wsj — 见 [LICENSE](LICENSE)。
+MIT © 2026 wsj060618 — 见 [LICENSE](LICENSE)。
