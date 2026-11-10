@@ -1,144 +1,105 @@
 # bookkeep-web
 
-记账本前端。Vue 3 + TypeScript + Vite + Element Plus + Pinia + vue-router + axios。
+bookkeep 的前端：Vue 3 + TypeScript + Vite + Element Plus。
+后端仓库在 `D:\coding\bookkeep-server`（Spring Boot + MySQL）。
 
-当前进度：**W1 + W2 + W3 页面已就绪**——登录/注册、流水（默认首页：筛选/分页/导出/记一笔）、统计（按月收支 + 分类占比）、账本管理、只读公示页；
-登录后的页面统一套 `AppLayout`（桌面左侧竖栏 + 内容区最大 1440，手机回到单列 + 抽屉导航）。
-按 `D:\coding\bookkeep-server\PLAN.md` §6.1 的节奏，页面随后端模块长出来：
+## 页面
 
-| 阶段 | 后端 | 前端 |
+| 路由 | 页面 | 说明 |
 |---|---|---|
-| 第 0 步 | P1 认证（已完成） | 登录页（已完成） |
-| W1 | P2 分类 + 流水 | 流水列表 + 记一笔（已完成） |
-| W2 | P3 统计 + 导出 + 公示页 | 统计卡片 + 导出按钮 + 公示页（已完成） |
-| W3 | 单机打包 | 生产构建（`dist` 交给 Nginx） |
+| `/login` `/register` | 登录 / 注册 | 注册两步：账号 → 账本名，成功后自动登录 |
+| `/forgot-password` `/reset-password` | 找回 / 重置密码 | 邮件里的一次性 token |
+| `/transactions` | 流水（默认首页） | 筛选、分页、导出、记一笔、票据图集 |
+| `/stats` | 收支统计 | 月度汇总、分类占比、收支对比 |
+| `/books` | 账本 | 新建 / 改名 / 切换 / 归档 / 回收站 |
+| `/categories` | 分类模板 | 账号级模板，改一条存一条 |
+| `/settings` | 账号设置 | 资料、改密码、注销 |
+| `/report/:token` | 公示页 | 免登录只读，可看票据 |
 
-## 启动
+登录后的页面统一套 `AppLayout`（桌面左侧竖栏，手机抽屉导航），「记一笔」「分享」两个弹窗挂在 layout 上共用。
 
-前置：后端跑在 `http://localhost:8080`（`D:\coding\bookkeep-server`，需要 `DB_USER` / `DB_PWD` 环境变量）。
+## 技术栈
+
+Vue 3.5（`<script setup>` + TS）、Vite 8、Element Plus 2、Pinia、vue-router 4、axios、ECharts（按需异步加载）、Vitest。
+
+## 项目结构
+
+```
+bookkeep-web/
+├── index.html
+├── vite.config.ts              dev server、/api 代理到 127.0.0.1:8080、Vitest 配置（happy-dom）
+└── src/
+    ├── main.ts                 挂载应用、注册 Element Plus / Pinia / router
+    ├── App.vue
+    ├── style.css               全局样式与主题变量
+    ├── api/                    出网口：视图层不出现 URL 字符串
+    │   ├── request.ts          唯一 axios 实例：带 token、判 code、401 跳登录、blob 下载
+    │   ├── auth.ts book.ts category.ts template.ts transaction.ts
+    │   ├── statistic.ts receipt.ts user.ts public.ts
+    ├── components/             可复用组件
+    │   ├── TxItem.vue              一条流水（列表行）
+    │   ├── TransactionFormDialog.vue 记一笔 / 改流水（含分类现建、票据）
+    │   ├── ReceiptGalleryDialog.vue  票据图集（管理端读写 / 公示页只读）
+    │   ├── CategoryFormDialog.vue    分类表单（名称 + 图标 + 颜色）
+    │   ├── TemplateFormDialog.vue    新建模板
+    │   └── CategoryChart.vue CategoryChartCard.vue CompareChart.vue  图表
+    ├── composables/
+    │   ├── shell.ts            layout 向子页面提供的分类缓存、数据版本号、开弹窗
+    │   └── useIsMobile.ts      响应式断点
+    ├── layouts/AppLayout.vue   侧边栏 + 顶栏 + 记一笔/分享弹窗 + 404
+    ├── router/index.ts         路由与登录守卫
+    ├── stores/auth.ts          Pinia：token、用户、账本列表
+    ├── types/api.ts            与后端 DTO 一一对应的类型（唯一类型来源）
+    ├── utils/
+    │   ├── validate.ts         邮箱 / 密码 / 金额 / 用户名规则（与后端同一条）
+    │   ├── category.ts         图标与颜色的语义 key → emoji / 色值
+    │   ├── receipt.ts          票据大小、张数、默认标题
+    │   └── token.ts            localStorage 读写
+    └── views/                  10 个页面（见上表）
+```
+
+## 与后端的约定
+
+1. 响应统一 `{code, message, data}`；业务错误是 **HTTP 200 + `body.code`**，只有认证/授权失败用真实 401/403。
+   所以 `request.ts` 成功回调看 `code`、失败回调看 `status`。
+2. 金额是**字符串**（后端 `BigDecimal` 按字符串序列化），不要 `parseFloat` 后累加。
+3. 前端从不传 `bookId`：后端按 `user.current_book_id` 推导。
+4. 下载类接口成功是文件流、失败是 JSON：`request.ts` 里有独立的 `httpFile` 实例，按 `content-type` 分流。
+5. 图片走 blob（登录态接口不能用 `<img src>`）——所以 nginx 的 CSP `img-src` 必须含 `blob:`。
+
+改后端 DTO 时先改 `src/types/api.ts`，让编译错误告诉你哪些页面要跟着改。
+
+## 开发
 
 ```powershell
-cd D:\coding\bookkeep-web
-npm install          # 第一次，或 package.json 变了
-npm run dev          # http://localhost:5173
+npm install
+npm run dev        # http://localhost:5173，/api 代理到 127.0.0.1:8080
 ```
 
-其它命令：
+后端要先跑起来（`bookkeep-server`，需要 `DB_USER` / `DB_PWD`）。
+数据库里没账号就直接开 `/register`。
+
+## 构建与测试
 
 ```powershell
-npm run build        # vue-tsc 类型检查 + 打包（类型错误会在这里失败，不是运行时）
-npm run preview      # 预览 dist 产物
+npm run test       # Vitest（组件 + api 层单测）
+npm run build      # vue-tsc 类型检查 + 打包 → dist/
+npm run preview    # 本地预览 dist
 ```
 
-数据库里还没有账号时，直接打开 `http://localhost:5173/register` 注册一个（注册成功会自动登录并建好班级账本）。
+`build` 会做全量类型检查，类型错误在这一步失败，不会拖到运行时。
 
-## 页面结构（路由 + 布局）
+## 部署
 
-```
-/login             LoginView            未登录页（不套布局）
-/register          RegisterView         未登录页（邮箱必填）
-/forgot-password   ForgotPasswordView   填写用户名+邮箱申请重置
-/reset-password    ResetPasswordView    邮件链接落地：?token=xxx 设置新密码
-/                  AppLayout
-  ├─ ''            → 重定向到 /transactions（默认页）
-  ├─ transactions  TransactionsView     流水：筛选 / 分页 / 导出 / 改删
-  ├─ stats         StatsView            统计：按月收支 + 支出分类占比
-  ├─ books         BooksView            账本：新建 / 改名 / 切换 / 回收站
-  └─ settings      SettingsView         账号设置：资料 / 改密码 / 注销
-/report/:token     PublicReportView     免登录公示页（不套布局）
-```
+只把 `dist/` 交给 nginx（本地单机部署或云端 compose 都是只读挂载）：
 
-- `src/layouts/AppLayout.vue`：左侧竖栏（≥1024 显示、768–1023 收成图标栏、<768 改抽屉）+ 顶栏（账本切换器 / 分享 / 退出）
-- 导航顺序：**流水（默认）→ 统计 → 账本**；没有「概览」页，统计是独立页面
-- 「记一笔」「分享」两个弹窗挂在 layout，三个页面共用；页面通过 `src/composables/shell.ts` 的 `useShell()` 拿到分类与 `txVersion`
-- **切账本**时 layout 给 `RouterView` 换 `key`，子页面重新挂载并各自重拉数据，避免漏改
-- 内容区 `max-width: 1440px`（不写死 720，桌面不再两侧大片留白；也不拉满 4K 屏，否则流水行会被拉成一条线）
+- 本机：`robocopy dist D:\coding\bookkeep-server\deploy\web`
+- 云端：覆盖 `/opt/bookkeep-server/bookkeep-web/dist`，不用重启容器
 
-## 第 0 步验收（按可观察行为验收，不看「页面能打开」）
-
-1. 打开 `http://localhost:5173/` → 未登录被重定向到 `/login`
-2. 输错密码 → 提示「用户名或密码错误」，按钮从 loading 恢复，页面不跳转
-3. 正确登录 → 提示「欢迎回来，xxx」→ 跳到首页，显示昵称 / 用户名 / currentBookId
-4. **刷新首页（F5）** → 昵称还在（说明 token 存在 localStorage，`/api/auth/me` 带上了 `Authorization: Bearer`）
-5. 浏览器 DevTools → Application → Local Storage 删掉 `bookkeep_token`，再刷新 → 回到登录页
-6. 手动把 `bookkeep_token` 改成乱码再刷新 → 后端 401 → 提示后回到登录页（`/me` 返回真实 HTTP 401）
-7. Network 面板确认：登录只发**一次** `/api/auth/login`；连点登录按钮不会发第二次（按钮单飞）
-
-## W1 + W2 验收（后端在跑的前提下，5 分钟）
-
-0. **无痕窗口**打开 `http://localhost:5173/register` → 第一步填账号，第二步给账本起名（默认「班级账本」）→
-   完成注册后自动登录，**默认落在流水页**，账本名就是刚填的、分类下拉里有 13 个分类；
-   再用同一个用户名注册 → 提示已被占用并给「去登录」引导（注册非幂等，连点不能重复建号）
-1. 点侧栏「统计」→「本月收入 / 本月支出 / 本月结余 / 累计结余」，空账本是 `0.00` 而不是空白；
-   下方列出各支出分类的金额与占比条
-2. 点左侧竖栏「记一笔」（手机上点右下角的浮动按钮）→ 选分类、填金额、保存 → 回到「流水」列表出现新行；
-   再切到「统计」→ 本月收入/支出与分类占比跟着变（不需要手动刷新）
-3. **连点保存** → 只成功一笔（按钮单飞，Network 里只有一次 POST）
-4. 点顶栏账本名 → 下拉里直接切另一本；或「管理账本…」进账本页 → 新建「二班班费」→ 自动切过去、
-   分类换了一套（13 条但 id 不同）、流水是空的；切回原账本，原来的流水和统计回来
-5. 在账本页改名 → 顶栏标题立即变，F5 后仍是新名字；公示链接（token）没变
-6. 账本页删除当前账本 → 自动切到剩下那本；「回收站」里能看到它并显示还剩几天，点恢复能回来；
-   只剩一本时「删除」按钮是灰的（后端也会回 400）
-7. 记一笔超过结余的支出 → 弹出后端 `code=400` 的提示（不是「请求失败（HTTP 500）」）
-8. F5 刷新 → 列表、统计、结余都还在
-9. 切类型/分类/日期/关键字筛选 → 列表跟着变、分页回到第 1 页（**每页条数保留**，不会被重置）
-10. 分页条显示「共 N 条」；切到 50 条/页 → 一页看完且回到第 1 页；停在第 3 页时切到 100 条/页 → 不会出现空白列表；
-    手机宽度（DevTools 375px）下分页不换行（跳页框会被隐藏）
-11. 点「导出全部」→ 下载的是 `.csv`，Excel 打开中文不乱码、金额两位小数；把日期区间选反 → 弹提示且**不下载**
-12. 点「分享」复制链接 → 无痕窗口打开 `/report/{token}`（不带 token 也能看）→ 有收入/支出/累计结余与逐行结余
-13. 无痕窗口把链接里的 token 改一个字符 → 显示「公示页不存在或已失效」，不会回落到别人的账本
-
-## 一个请求是怎么走的
-
-```
-LoginView.vue      表单校验 + 单飞标志 submitting
-  → stores/auth.ts   login()：调接口、存 token、存 user
-    → api/auth.ts    login()：只负责 URL 和类型
-      → api/request.ts  axios 实例：请求头加 Bearer；响应统一判 code / status
-        → /api/auth/login  （Vite 代理到 http://localhost:8080）
-```
-
-加新接口时只动 `src/api/*.ts`（+ `src/types/api.ts` 补字段），视图层不出现 URL 字符串。
-
-## 约定（来自后端 PLAN §5.0，改前端时必须遵守）
-
-1. 信封 `{code, message, data}`；分页 `data = {total, list}`，入参 `page`（从 1 开始）/ `size`
-2. 金额一律**字符串**（后端 `BigDecimal` 按字符串序列化），前端不要 `parseFloat` 后累加，展示直接用字符串
-3. 日期 `yyyy-MM-dd`，月份 `yyyy-MM`，不传时间戳
-4. 错误只看 `code`：`code !== 200` 提示 `message`；`code === 401` 清 token 跳登录；真实 HTTP 401/403 同理
-   （后端策略：业务错误 HTTP 200 + body.code，只有认证/授权失败用真实 401/403）
-5. 列表必须自带展示用名称（`categoryName` 等），前端不做二次查询
-
-## TypeScript 速查（零基础看这一节就够用）
-
-TS = JS + **类型标注**。类型只在写代码/编译时存在，`npm run build` 时被擦掉，产物还是普通 JS。
-它的唯一价值：把「字段名写错、类型对不上、少判 null」从**运行时**提前到**编译时**。
-
-| 概念 | 本项目里的例子 | 说明 |
-|---|---|---|
-| 类型标注 | `const submitting = ref(false)` / `function login(username: string, password: string): Promise<LoginResp>` | 冒号后面是类型；`Promise<T>` 表示异步返回 `T` |
-| interface | `src/types/api.ts` 的 `User` / `LoginResp` | 描述对象有哪些字段、什么类型，对应后端 DTO |
-| 泛型 | `ApiResult<T>`、`get<T>(url)` | `T` 是占位符：`get<User>('/auth/me')` 得到的类型就是 `User` |
-| 联合类型 | `string \| null`（`User.nickname`）、`'income' \| 'expense'`（`TxType`） | 「要么是 A 要么是 B」；`TxType` 只有两个合法值 |
-| 类型收窄 | `TransactionsView.vue` 里 `v-if="auth.user"` | 判断过后 TS 才知道 `auth.user` 不是 null，才能 `.nickname` |
-| `!` 断言 | `formRef.value!`（本仓库没用，改用 `if (!formRef.value) return`） | 「我保证不是 null」，滥用会掩盖 bug，优先用 if 判断 |
-| `?` 可选 | `error.response?.status` | 可能不存在，不存在就返回 `undefined`，而不是抛异常 |
-| `type` vs `interface` | `type BookType = ...`，`interface User { ... }` | 项目里：给对象定型用 `interface`，给别名/联合用 `type` |
-| 声明合并 | `router/index.ts` 的 `declare module 'vue-router'` | 给第三方库的类型补字段，运行时没有对应代码 |
-| 严格模式带来的约束 | `noUnusedLocals` / `erasableSyntaxOnly` | 未使用的变量会让 build 失败；不能用 `enum`（请用字面量联合 `type`） |
-
-几条习惯：
-
-- **不要 `any`**。写不出类型时先 `console.log` 看真实返回，再补到 `src/types/api.ts` 里
-- `ref<T>(初始值)` 的 `T` 尽量写全，比如 `ref<FormInstance>()`；不写 TS 会猜成 `null` 就再也赋不了值
-- 后端改了 DTO，**先改 `src/types/api.ts`**，让编译错误告诉你哪些页面要跟着改
-- 遇到 `Property 'xxx' does not exist on type 'Yyy'`：八成是后端字段名和 `types/api.ts` 不一致
+完整步骤见后端仓库的 `docs/部署文档.md`。
 
 ## 已知取舍
 
-- Element Plus 全量引入（`main.ts`），首屏 JS ≈ 1 MB（gzip 330 KB）。项目演示阶段不值得为按需引入增加配置；
-  真要优化再加 `unplugin-vue-components` 或 `unplugin-element-plus`
-- 局域网 http 不是安全上下文（secure context），浏览器不暴露 `navigator.clipboard`：分享弹窗的「复制」会退回 `document.execCommand('copy')`（`src/utils/clipboard.ts`）；两者都被拒时提示长按手动选择。想彻底避免就上 HTTPS。
-- token 存 localStorage：能扛刷新，但 XSS 可窃取。生产环境若要更稳，可换 httpOnly Cookie + CSRF
-- 401 时用 `window.location.assign('/login')` 整页跳转（避免 `router → views → api → request` 的循环依赖），
-  代价是丢掉「登录后回到原页面」的体验，等页面多了再改成事件订阅
+- Element Plus 全量引入，首屏 JS ≈1MB（gzip 330KB）；演示阶段不为按需加载增加配置
+- token 存 localStorage：能扛刷新，但 XSS 可窃取；要更稳得换 httpOnly Cookie
+- 局域网 http 不是安全上下文，`navigator.clipboard` 不可用，分享弹窗的复制会退回 `execCommand('copy')`
