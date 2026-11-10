@@ -13,6 +13,7 @@ defineProps<{
 defineEmits<{
   edit: [tx: Transaction]
   remove: [tx: Transaction]
+  receipts: [tx: Transaction]
 }>()
 </script>
 
@@ -31,7 +32,18 @@ defineEmits<{
       </div>
       <div class="tx-line">
         <span class="tx-note">{{ tx.note || '—' }}</span>
-        <span class="tx-date">{{ tx.transDate }}</span>
+        <span class="tx-tail">
+          <button
+            v-if="tx.receiptCount > 0"
+            type="button"
+            class="tx-receipt"
+            :title="`${tx.receiptCount} 张票据`"
+            @click="$emit('receipts', tx)"
+          >
+            📎 {{ tx.receiptCount }}
+          </button>
+          <span class="tx-date">{{ tx.transDate }}</span>
+        </span>
       </div>
     </div>
 
@@ -105,6 +117,30 @@ defineEmits<{
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tx-tail {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 票据徽标：只有真的有图才出现，点开看图集 */
+.tx-receipt {
+  border: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-regular);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.tx-receipt:hover {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
 }
 
 .tx-actions {

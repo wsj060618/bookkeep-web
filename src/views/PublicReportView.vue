@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchPublicReport } from '../api/public'
+import { publicReceiptUrl } from '../api/receipt'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
 
 /** 收支对比图按需加载（ECharts 只在真要画图时才拉） */
@@ -185,6 +186,22 @@ onMounted(load)
               <div class="tx-line">
                 <span class="tx-note">{{ tx.note || '—' }}</span>
                 <span class="tx-date">{{ tx.transDate }} · 结余 ￥{{ tx.balanceAfter }}</span>
+              </div>
+              <!-- 票据：公示页只读，直接走匿名图片路径（不用带 token 的请求头） -->
+              <div v-if="tx.receiptCount > 0" class="tx-receipts">
+                <el-image
+                  v-for="receipt in tx.receipts"
+                  :key="receipt.id"
+                  class="tx-receipt"
+                  :src="publicReceiptUrl(token, receipt.id)"
+                  :preview-src-list="tx.receipts.map((r) => publicReceiptUrl(token, r.id))"
+                  :initial-index="tx.receipts.findIndex((r) => r.id === receipt.id)"
+                  fit="cover"
+                  :alt="receipt.title"
+                  :title="receipt.title"
+                  preview-teleported
+                  lazy
+                />
               </div>
             </div>
           </li>
@@ -400,6 +417,23 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 票据缩略图：公示页只读，点开看大图（el-image 自带预览） */
+.tx-receipts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tx-receipt {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  border: 1px solid var(--el-border-color-lighter);
+  background: #fff;
+  cursor: zoom-in;
 }
 
 .footer {

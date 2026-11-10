@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { createTransaction, updateTransaction } from '../api/transaction'
 import { createCategory } from '../api/category'
+import { uploadReceipt } from '../api/receipt'
 import CategoryFormDialog from './CategoryFormDialog.vue'
 import { iconOf } from '../utils/category'
 import { amountRule } from '../utils/validate'
+import {
+  RECEIPT_ACCEPT,
+  RECEIPT_MAX_PER_TRANSACTION,
+  defaultReceiptTitle,
+  formatSize,
+  validateReceiptFile,
+} from '../utils/receipt'
 import type { Category, Transaction, TxType } from '../types/api'
 
 /**
@@ -111,6 +119,69 @@ const rules: FormRules = {
   transDate: [{ required: true, message: '请选择日期', trigger: 'change' }],
 }
 
+/* ---------- 票据：选完先本地预览，等流水保存成功（有 id）后再逐张上传 ---------- */
+
+interface PendingReceipt {
+  file: File
+  title: string
+  /** 本地预览用的 objectURL，移除/关闭时 revoke */
+  url: string
+}
+
+const pending = ref<PendingReceipt[]>([])
+const uploading = ref(false)
+
+function clearPending(): void {
+  pending.value.forEach((item) => URL.revokeObjectURL(item.url))
+  pending.value = []
+}
+
+function onPickReceipts(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = '' // 允许再次选同一个文件
+  const existing = (props.editing?.receiptCount ?? 0) + pending.value.length
+  for (const file of files) {
+    const error = validateReceiptFile(file, existing + pending.value.length - (props.editing?.receiptCount ?? 0))
+    if (error) {
+      ElMessage.warning(error)
+      continue
+    }
+    pending.value.push({ file, title: defaultReceiptTitle(file.name), url: URL.createObjectURL(file) })
+  }
+  if (existing + pending.value.length > RECEIPT_MAX_PER_TRANSACTION) {
+    // 理论上 validate 已拦住，这里兜底防止 count 计算漂移
+    ElMessage.warning(`单笔最多 ${RECEIPT_MAX_PER_TRANSACTION} 张票据`)
+  }
+}
+
+function removePending(index: number): void {
+  URL.revokeObjectURL(pending.value[index].url)
+  pending.value.splice(index, 1)
+}
+
+/** 上传在保存之后：没有 transactionId 之前票据挂不上去 */
+async function uploadPending(transactionId: number): Promise<number> {
+  if (pending.value.length === 0) return 0
+  uploading.value = true
+  let failed = 0
+  try {
+    for (const item of pending.value) {
+      try {
+        await uploadReceipt(transactionId, item.file, item.title.trim() || undefined)
+      } catch {
+        failed += 1
+      }
+    }
+  } finally {
+    uploading.value = false
+    clearPending()
+  }
+  return failed
+}
+
+onBeforeUnmount(clearPending)
+
 // 每次打开都按 editing 重置，避免上次的输入残留
 watch(
   () => props.modelValue,
@@ -124,6 +195,7 @@ watch(
     form.categoryId = tx?.categoryId ?? typeCategories.value[0]?.id ?? null
     lastCategoryId = form.categoryId
     categoryDialogVisible.value = false
+    clearPending()
     formRef.value?.clearValidate()
   },
 )
@@ -163,12 +235,17 @@ async function onSubmit(): Promise<void> {
       transDate: form.transDate,
       note: form.note.trim() || null,
     }
-    if (props.editing) {
-      await updateTransaction(props.editing.id, req)
+    // 票据要挂在流水上：必须先保存拿到 id，再逐张上传
+    const saved = props.editing
+      ? await updateTransaction(props.editing.id, req)
+      : await createTransaction(req)
+    const failed = await uploadPending(saved.id)
+
+    if (failed > 0) {
+      ElMessage.warning(`已保存，但有 ${failed} 张票据没传上去（可在流水右侧的票据里重试）`)
     } else {
-      await createTransaction(req)
+      ElMessage.success(props.editing ? '已修改' : '已记一笔')
     }
-    ElMessage.success(props.editing ? '已修改' : '已记一笔')
     visible.value = false
     emit('saved')
   } catch {
@@ -236,6 +313,29 @@ async function onSubmit(): Promise<void> {
           placeholder="比如：班费买水（可不填）"
         />
       </el-form-item>
+
+      <!-- 票据：选完先本地预览，保存成功后再逐张上传（要有 transactionId 才挂得上） -->
+      <el-form-item :label="`票据（可选，最多 ${RECEIPT_MAX_PER_TRANSACTION} 张）`">
+        <div class="receipt-picker">
+          <div v-if="props.editing && props.editing.receiptCount > 0" class="receipt-existing">
+            这笔已有 {{ props.editing.receiptCount }} 张票据，可在流水右侧「票据」里管理
+          </div>
+          <div v-if="pending.length" class="receipt-list">
+            <div v-for="(item, index) in pending" :key="item.url" class="receipt-card">
+              <img class="receipt-thumb" :src="item.url" alt="" />
+              <el-input v-model="item.title" size="small" maxlength="30" />
+              <div class="receipt-meta">
+                <span>{{ formatSize(item.file.size) }}</span>
+                <el-button text size="small" type="danger" @click="removePending(index)">移除</el-button>
+              </div>
+            </div>
+          </div>
+          <label v-if="pending.length < RECEIPT_MAX_PER_TRANSACTION" class="receipt-add" :class="{ busy: uploading }">
+            <input type="file" :accept="RECEIPT_ACCEPT" multiple hidden @change="onPickReceipts" />
+            📎 选择图片（jpg/png/webp，单张 ≤5MB）
+          </label>
+        </div>
+      </el-form-item>
     </el-form>
 
     <template #footer>
@@ -253,3 +353,64 @@ async function onSubmit(): Promise<void> {
     />
   </el-dialog>
 </template>
+
+<style scoped>
+.receipt-picker {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.receipt-existing {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.receipt-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.receipt-card {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
+}
+
+.receipt-thumb {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.receipt-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.receipt-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  justify-self: start;
+}
+
+.receipt-add.busy {
+  pointer-events: none;
+  opacity: 0.6;
+}
+</style>

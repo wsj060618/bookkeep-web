@@ -224,6 +224,24 @@ export interface Transaction {
   categoryName: string
   categoryIcon: string | null
   categoryColor: string | null
+  /** 票据张数（列表徽标）；图片本身走 /api/transactions/{id}/receipts/{rid} */
+  receiptCount: number
+}
+
+/** 票据列表项，对应后端 ReceiptResp（不含文件内容，也不含磁盘路径） */
+export interface Receipt {
+  id: number
+  title: string
+  originalName: string | null
+  sizeBytes: number
+  /** yyyy-MM-dd HH:mm:ss */
+  createdAt: string
+}
+
+/** 公示页的票据：只有 id 与标题，图片走 /api/public/report/{token}/receipts/{id} */
+export interface PublicReceipt {
+  id: number
+  title: string
 }
 
 /** 新增 / 修改流水的请求体，对应后端 TransactionReq */
@@ -280,6 +298,9 @@ export interface ReportTransaction {
   categoryIcon: string | null
   categoryColor: string | null
   balanceAfter: string
+  /** 票据张数 + 只读列表（id 与标题） */
+  receiptCount: number
+  receipts: PublicReceipt[]
 }
 
 /** 导入流水的结果（POST /api/transactions/import）：行级失败带行号与原因 */

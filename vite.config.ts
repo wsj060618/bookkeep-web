@@ -4,6 +4,11 @@ import { defineConfig } from 'vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  // 单测走 happy-dom（够快，不需要真浏览器）；断言放在 src/**/__tests__ 下
+  test: {
+    environment: 'happy-dom',
+    include: ['src/**/__tests__/**/*.spec.ts'],
+  },
   server: {
     port: 5173,
     proxy: {

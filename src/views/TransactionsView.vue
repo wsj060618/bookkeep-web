@@ -9,9 +9,11 @@ import {
   pageTransactions,
 } from '../api/transaction'
 import { saveBlob } from '../api/request'
+import { exportBookReceipts } from '../api/receipt'
 import { useShell } from '../composables/shell'
 import { useAuthStore } from '../stores/auth'
 import TxItem from '../components/TxItem.vue'
+import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
 import type { ImportResult, Transaction, TransactionQuery, TxType } from '../types/api'
 
 /**
@@ -162,10 +164,20 @@ function onSizeChange(): void {
   void loadList()
 }
 
-async function onExport(format: 'csv' | 'xlsx'): Promise<void> {
+async function onExport(format: 'csv' | 'xlsx' | 'receipts'): Promise<void> {
   if (exporting.value) return
   exporting.value = true
   try {
+    if (format === 'receipts') {
+      // 票据打包：和流水导出同一套日期区间；没有票据时后端回 400 文案
+      const params = dateRange.value
+        ? { startDate: dateRange.value[0], endDate: dateRange.value[1] }
+        : {}
+      const zip = await exportBookReceipts(params)
+      saveBlob(zip.blob, zip.filename)
+      ElMessage.success('已开始下载')
+      return
+    }
     // 有日期筛选就导这一段，没有就整本；区间由后端解释（含首尾）
     const params = dateRange.value
       ? { startDate: dateRange.value[0], endDate: dateRange.value[1], format }
@@ -178,6 +190,21 @@ async function onExport(format: 'csv' | 'xlsx'): Promise<void> {
   } finally {
     exporting.value = false
   }
+}
+
+/* ---------- 票据图集 ---------- */
+
+const galleryVisible = ref(false)
+const galleryTx = ref<Transaction | null>(null)
+
+function openGallery(tx: Transaction): void {
+  galleryTx.value = tx
+  galleryVisible.value = true
+}
+
+/** 票据增删后徽标数字要变：只重新拉列表，不动筛选条件 */
+function onReceiptsChanged(): void {
+  void loadList()
 }
 
 /* ---------- 导入 ---------- */
@@ -311,6 +338,7 @@ onMounted(() => {
             <el-dropdown-menu>
               <el-dropdown-item command="csv">CSV（通用）</el-dropdown-item>
               <el-dropdown-item command="xlsx">Excel（带统计图）</el-dropdown-item>
+              <el-dropdown-item command="receipts" divided>票据（zip，按账本/月份）</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -350,6 +378,7 @@ onMounted(() => {
           :actions="!archived"
           @edit="shell.openEdit"
           @remove="onDelete"
+          @receipts="openGallery"
         />
       </div>
     </section>
@@ -418,6 +447,13 @@ onMounted(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 票据图集：点流水右侧的 📎 打开 -->
+    <ReceiptGalleryDialog
+      v-model="galleryVisible"
+      :transaction="galleryTx"
+      @changed="onReceiptsChanged"
+    />
   </div>
 </template>
 
