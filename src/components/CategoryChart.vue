@@ -31,6 +31,9 @@ let observer: ResizeObserver | null = null
 /** 柱状图与饼图统一 300px：两张图并排时高度要一样，不然一行里会错位 */
 const HEIGHT = 300
 
+/** 入场时柱子/扇区依次出现（最多错开 4 档，条目再多也不会拖成一长串） */
+const stagger = (idx: number): number => Math.min(idx, 4) * 90
+
 const palette = computed(() => props.items.map((item) => colorOf(item.categoryColor)))
 
 /** 钱一律两位小数 + 千分位 */
@@ -53,7 +56,7 @@ function barOption(): EChartsCoreOption {
   return {
     // 动画显式写出来（ECharts 默认就有，以前被 render() 里的 resize() 顶掉了）
     animation: true,
-    animationDuration: 1000,
+    animationDuration: 1500,
     animationDurationUpdate: 600,
     animationEasing: 'cubicOut',
     animationEasingUpdate: 'cubicOut',
@@ -94,6 +97,7 @@ function barOption(): EChartsCoreOption {
     series: [
       {
         type: 'bar',
+        animationDelay: stagger,
         barMaxWidth: 26,
         data: props.items.map((item, index) => ({
           value: Number(item.amount),
@@ -119,7 +123,7 @@ function pieOption(): EChartsCoreOption {
   return {
     // 动画显式写出来（ECharts 默认就有，以前被 render() 里的 resize() 顶掉了）
     animation: true,
-    animationDuration: 1000,
+    animationDuration: 1500,
     animationDurationUpdate: 600,
     animationEasing: 'cubicOut',
     animationEasingUpdate: 'cubicOut',
@@ -144,6 +148,7 @@ function pieOption(): EChartsCoreOption {
     series: [
       {
         type: 'pie',
+        animationDelay: stagger,
         radius: donut ? ['44%', '66%'] : '62%',
         center: ['50%', '42%'],
         minAngle: 2,
