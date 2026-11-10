@@ -216,16 +216,16 @@ export interface TransactionQuery {
   keyword?: string
 }
 
-/** 月度统计；month 是后端回显的实际月份 */
+/** 区间统计；startMonth / endMonth 为 null 表示该端不限（都不传 = 全部时间） */
 export interface Summary {
   /** yyyy-MM */
-  month: string
+  startMonth: string | null
+  /** yyyy-MM */
+  endMonth: string | null
   income: string
   expense: string
-  /** 本月收支差 */
+  /** 区间末（结束月最后一天）的账户余额；结束月份不限时 = 当前余额 */
   balance: string
-  /** 全账本累计 */
-  totalBalance: string
 }
 
 /** percent 是两位小数字符串，相加不一定 100.00 */

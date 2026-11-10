@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
 import { useShell } from '../composables/shell'
@@ -9,40 +9,51 @@ import type { CategoryStat, Summary, TxType } from '../types/api'
 const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
 
 /**
- * 统计页：按月看收支与分类占比。
- * 顶部是「收支对比」（柱状：收入/支出/结余 + 环形：收支占比），
- * 下面占比拆成**收入、支出两张卡片并排**（收入在左、支出在右），
- * **每张卡自己带柱状图 / 饼图 / 环形图切换**，互不影响。
+ * 统计页：默认看全部时间，可按月份区间筛选。
+ * 卡片：收入 / 支出 / 结余（结余是区间末那天的余额，不是区间内的收支差）。
  * 改过流水（txVersion 变化）后要重拉，否则从流水页回来数字是旧的。
  */
 
 const shell = useShell()
 
 const loading = ref(false)
-/** 空字符串 = 当月，由后端按 Asia/Shanghai 决定；回显后用后端返回的 month */
-const month = ref('')
+/** 空 = 全部时间；有值 = [开始月, 结束月]，都是 yyyy-MM */
+const monthRange = ref<[string, string] | null>(null)
 const summary = ref<Summary | null>(null)
 /** 两个方向一次都拉回来：并排展示，不需要再等第二次请求 */
 const stats = ref<Record<TxType, CategoryStat[]>>({ expense: [], income: [] })
 
+const startMonth = computed(() => monthRange.value?.[0])
+const endMonth = computed(() => monthRange.value?.[1])
+
+/** 页面上显示的区间文字 */
+const rangeText = computed(() => {
+  if (!startMonth.value && !endMonth.value) return '全部时间'
+  return `${startMonth.value || '最早'} ~ ${endMonth.value || '至今'}`
+})
+
 async function load(): Promise<void> {
   loading.value = true
   try {
-    const m = month.value || undefined
     const [resp, expense, income] = await Promise.all([
-      fetchSummary(m),
-      fetchCategoryStat(m, 'expense'),
-      fetchCategoryStat(m, 'income'),
+      fetchSummary(startMonth.value, endMonth.value),
+      fetchCategoryStat(startMonth.value, endMonth.value, 'expense'),
+      fetchCategoryStat(startMonth.value, endMonth.value, 'income'),
     ])
     summary.value = resp
     stats.value = { expense, income }
-    month.value = resp.month
   } catch {
     summary.value = null
     stats.value = { expense: [], income: [] }
   } finally {
     loading.value = false
   }
+}
+
+/** 重置：清空区间，回到「全部时间」 */
+function onReset(): void {
+  monthRange.value = null
+  void load()
 }
 
 watch(shell.txVersion, () => {
@@ -60,40 +71,40 @@ onMounted(() => {
       <div>
         <h2 class="page-title">收支统计</h2>
       </div>
-      <el-date-picker
-        v-model="month"
-        class="month-picker"
-        type="month"
-        value-format="YYYY-MM"
-        placeholder="选择月份"
-        :clearable="false"
-        @change="load"
-      />
+      <div class="head-actions">
+        <el-date-picker
+          v-model="monthRange"
+          class="month-picker"
+          type="monthrange"
+          value-format="YYYY-MM"
+          range-separator="至"
+          start-placeholder="开始月份"
+          end-placeholder="结束月份"
+          @change="load"
+        />
+        <el-button :disabled="!monthRange" @click="onReset">重置</el-button>
+      </div>
     </div>
 
     <section v-loading="loading" class="numbers">
       <div class="num">
-        <span class="num-label">本月收入</span>
+        <span class="num-label">收入</span>
         <span class="num-value income">+￥{{ summary?.income ?? '0.00' }}</span>
       </div>
       <div class="num">
-        <span class="num-label">本月支出</span>
+        <span class="num-label">支出</span>
         <span class="num-value expense">-￥{{ summary?.expense ?? '0.00' }}</span>
       </div>
       <div class="num">
-        <span class="num-label">本月结余</span>
-        <span class="num-value">￥{{ summary?.balance ?? '0.00' }}</span>
-      </div>
-      <div class="num">
-        <span class="num-label">累计结余</span>
-        <span class="num-value strong">￥{{ summary?.totalBalance ?? '0.00' }}</span>
+        <span class="num-label">结余</span>
+        <span class="num-value strong">￥{{ summary?.balance ?? '0.00' }}</span>
       </div>
     </section>
 
     <section v-loading="loading" class="panel">
       <div class="panel-head">
         <h3 class="panel-title">收支对比</h3>
-        <span class="panel-month">{{ summary?.month ?? '' }}</span>
+        <span class="panel-month">{{ rangeText }}</span>
       </div>
 
       <div class="charts-row">
@@ -121,7 +132,7 @@ onMounted(() => {
     <section v-loading="loading" class="panel">
       <div class="panel-head">
         <h3 class="panel-title">分类占比</h3>
-        <span class="panel-month">{{ summary?.month ?? '' }}</span>
+        <span class="panel-month">{{ rangeText }}</span>
       </div>
 
       <div class="charts-row">
@@ -140,6 +151,7 @@ onMounted(() => {
 
 .page-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
@@ -150,9 +162,14 @@ onMounted(() => {
   font-size: 18px;
 }
 
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .month-picker {
-  width: 140px;
-  flex: none;
+  width: 260px;
 }
 
 .numbers {
@@ -250,6 +267,15 @@ onMounted(() => {
 
   .num-value {
     font-size: 18px;
+  }
+
+  .head-actions {
+    width: 100%;
+  }
+
+  .month-picker {
+    flex: 1;
+    width: auto;
   }
 }
 </style>
