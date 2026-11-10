@@ -79,9 +79,9 @@ onMounted(load)
     <template v-else>
       <section v-loading="loading" class="card">
         <div class="card-head">
-          <!-- 一条链接带多本账本：切换直接放在收支卡片里，不留空标签内容区 -->
+          <!-- 一条链接带多本账本：≤4 本用胶囊切换，更多改用下拉，两者都只占一行 -->
           <el-radio-group
-            v-if="books.length > 1"
+            v-if="books.length > 1 && books.length <= 4"
             v-model="activeBookId"
             size="small"
             class="book-switch"
@@ -90,6 +90,14 @@ onMounted(load)
               {{ b.bookName }}
             </el-radio-button>
           </el-radio-group>
+          <el-select
+            v-else-if="books.length > 4"
+            v-model="activeBookId"
+            size="small"
+            class="book-select"
+          >
+            <el-option v-for="b in books" :key="b.bookId" :value="b.bookId" :label="b.bookName" />
+          </el-select>
           <span v-else class="month-label">{{ current?.month ?? '' }} 收支</span>
 
           <el-date-picker
@@ -221,6 +229,12 @@ onMounted(load)
 .book-switch {
   flex-wrap: wrap;
   row-gap: 4px;
+}
+
+/* 账本超过 4 本改用下拉：一行放得下，不用把按钮堆成好几排 */
+.book-select {
+  width: 180px;
+  max-width: 100%;
 }
 
 .month-label {
