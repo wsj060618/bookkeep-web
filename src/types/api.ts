@@ -46,8 +46,8 @@ export interface Book {
   name: string
   type: BookType
   /**
-   * 当前分类来自哪套自定义模板；**null = 内置「班级班费」模板**（后端 id=0，不入库）。
-   * 语义是「基于哪套模板」，用户手工增删改分类后不会清空。
+   * 这本账本的分类是从哪套模板复制的；**null = 老数据**（当时内置模板还没有行，
+   * 注册时建的默认模板现在也是真实行，id > 0）。语义是「基于哪套模板」，用户手工增删改分类后不会清空。
    */
   categoryTemplateId: number | null
   /** 学期截止日期（yyyy-MM-dd）；null = 没填。只用于展示，不参与统计 */
@@ -69,7 +69,7 @@ export interface CategoryTemplateItem {
 /**
  * 分类模板，对应后端 CategoryTemplateResp。
  * **跟账号走**（不按账本隔离）：新建账本时选一套来预置分类。
- * `id === 0` 是内置「班级班费」：不能改名/删除。
+ * `id === 0` 只在「账号一套模板都没有」时兜底出现（只读）；正常账号的「班级班费」是一条真实模板，可改可删。
  */
 export interface CategoryTemplate {
   id: number
@@ -142,7 +142,7 @@ export interface BookUpdateReq {
 
 /**
  * 新建账本的请求体，对应后端 BookCreateReq。
- * `templateId` 决定新账本预置哪套分类：**省略 / 0 / null 都是内置「班级班费」**。
+ * `templateId` 决定新账本预置哪套分类：传列表中某一套的 id；**省略 / 0 / null 才回落到内置预设**。
  */
 export interface BookCreateReq {
   /** ≤50 字，不能全空格 */
