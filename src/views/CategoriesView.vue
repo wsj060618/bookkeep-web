@@ -52,6 +52,14 @@ const selectedTemplate = computed(
 )
 const selectedIsBuiltin = computed(() => selectedTemplate.value?.builtin ?? true)
 
+/** 所选模板的支出 / 收入条目：**只属于模板**，与当前账本的分类无关 */
+const templateExpense = computed(
+  () => selectedTemplate.value?.items.filter((item) => item.type === 'expense') ?? [],
+)
+const templateIncome = computed(
+  () => selectedTemplate.value?.items.filter((item) => item.type === 'income') ?? [],
+)
+
 /** 当前账本已归档 = 只读：不能增删改分类（模板是账号级的，仍可维护） */
 const archived = computed(() => (auth.books.find((b) => b.current) ?? null)?.archived === true)
 
@@ -361,9 +369,36 @@ onMounted(async () => {
       </div>
 
       <p class="tpl-tip">
-        「新建模板」自己排分类（支出、收入两张卡片）；「存为模板」把当前账本的分类复制成新模板。
-        模板在<b>新建账本</b>时选用，账本一旦有了流水就不能再换。
+        下面的 <b>支出 / 收入</b> 就是所选模板的内容，切模板立刻变；它们只属于模板，<b>不改当前账本的分类</b>。
+        「新建模板」自己排分类，「存为模板」把当前账本的分类复制一份。模板在<b>新建账本</b>时选用，
+        账本一旦有了流水就不能再换。
       </p>
+
+      <!-- 所选模板的条目（与当前账本无关） -->
+      <div class="tpl-preview">
+        <div class="tpl-col">
+          <header class="tpl-col-head">
+            支出<span class="tpl-col-count">{{ templateExpense.length }}</span>
+          </header>
+          <div class="tpl-chips">
+            <span v-for="item in templateExpense" :key="item.name" class="tpl-chip">
+              {{ iconOf(item.icon) }} {{ item.name }}
+            </span>
+            <span v-if="templateExpense.length === 0" class="tpl-empty">没有支出分类</span>
+          </div>
+        </div>
+        <div class="tpl-col">
+          <header class="tpl-col-head">
+            收入<span class="tpl-col-count">{{ templateIncome.length }}</span>
+          </header>
+          <div class="tpl-chips">
+            <span v-for="item in templateIncome" :key="item.name" class="tpl-chip">
+              {{ iconOf(item.icon) }} {{ item.name }}
+            </span>
+            <span v-if="templateIncome.length === 0" class="tpl-empty">没有收入分类</span>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="batch-bar">
@@ -498,6 +533,66 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 1.6;
   color: var(--el-text-color-secondary);
+}
+
+/* 所选模板的条目预览：支出 / 收入两列，切模板立刻变 */
+.tpl-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.tpl-col {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+  min-width: 0;
+}
+
+.tpl-col-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-regular);
+}
+
+.tpl-col-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--el-text-color-secondary);
+}
+
+.tpl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tpl-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--el-bg-color);
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  white-space: nowrap;
+}
+
+.tpl-empty {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+@media (max-width: 767px) {
+  .tpl-preview {
+    grid-template-columns: 1fr;
+  }
 }
 
 .cat-head {
