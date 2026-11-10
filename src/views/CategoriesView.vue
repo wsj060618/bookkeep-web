@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createCategory, deleteCategories, deleteCategory, updateCategory } from '../api/category'
 import { listBooks } from '../api/book'
@@ -52,13 +52,149 @@ const selectedTemplate = computed(
 )
 const selectedIsBuiltin = computed(() => selectedTemplate.value?.builtin ?? true)
 
-/** 所选模板的支出 / 收入条目：**只属于模板**，与当前账本的分类无关 */
-const templateExpense = computed(
-  () => selectedTemplate.value?.items.filter((item) => item.type === 'expense') ?? [],
+/* ---------- 所选模板的条目：直接在下面两张卡片里改 ---------- */
+
+/**
+ * 草稿：从所选模板同步过来，改动只落在本地，点「保存模板」才提交。
+ * 与当前账本的分类完全无关——模板是账号级的，账本只是新建时复制了一份。
+ */
+const draftItems = ref<TemplateItemInput[]>([])
+const savingItems = ref(false)
+
+function syncDraft(): void {
+  const template = selectedTemplate.value
+  draftItems.value = template
+    ? template.items.map((item) => ({
+        name: item.name,
+        type: item.type,
+        icon: item.icon,
+        color: item.color,
+      }))
+    : []
+}
+
+syncDraft()
+
+const draftExpense = computed(() => draftItems.value.filter((item) => item.type === 'expense'))
+const draftIncome = computed(() => draftItems.value.filter((item) => item.type === 'income'))
+
+/** 有改动才允许保存（比较名称与方向的序列，够用且不需要深比较 icon） */
+const templateDirty = computed(() => {
+  const template = selectedTemplate.value
+  if (!template) return false
+  const before = template.items.map((item) => `${item.type}:${item.name}`)
+  const after = draftItems.value.map((item) => `${item.type}:${item.name}`)
+  return before.length !== after.length || before.some((value, index) => value !== after[index])
+})
+
+/** 切模板 / 刚保存完：把草稿对齐到选中模板 */
+const lastTemplateId = ref<number>(BUILTIN_ID)
+watch(
+  () => selectedTemplate.value?.id,
+  (id) => {
+    lastTemplateId.value = id ?? BUILTIN_ID
+    syncDraft()
+  },
+  { immediate: true },
 )
-const templateIncome = computed(
-  () => selectedTemplate.value?.items.filter((item) => item.type === 'income') ?? [],
-)
+
+async function onTemplateChange(): Promise<void> {
+  if (!templateDirty.value) {
+    syncDraft()
+    return
+  }
+  const discard = await ElMessageBox.confirm(
+    '当前模板还有没保存的改动，切换后这些改动会丢失。',
+    '放弃改动？',
+    { type: 'warning', confirmButtonText: '放弃', cancelButtonText: '继续编辑' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (discard) {
+    syncDraft()
+    lastTemplateId.value = templateId.value
+  } else {
+    // 用户要继续编辑：把下拉还原到原来那套模板
+    templateId.value = lastTemplateId.value
+  }
+}
+
+/** 新增一条：只改草稿，保存时统一提交（后端按数组顺序编 sortOrder） */
+async function onAddTemplateItem(type: TxType): Promise<void> {
+  if (selectedIsBuiltin.value) return
+  const result = await ElMessageBox.prompt(
+    type === 'expense' ? '新支出分类的名称' : '新收入分类的名称',
+    '添加模板分类',
+    {
+      confirmButtonText: '添加',
+      cancelButtonText: '取消',
+      inputPlaceholder: '如：班服、打印费',
+      inputValidator: (value: string) => {
+        const name = (value ?? '').trim()
+        if (!name) return '名称不能为空'
+        if (name.length > 20) return '名称不超过 20 个字'
+        if (draftItems.value.some((item) => item.type === type && item.name === name)) {
+          return '这套模板里已有同名分类'
+        }
+        return true
+      },
+    },
+  ).catch(() => null)
+  if (!result) return
+  draftItems.value.push({
+    name: result.value.trim(),
+    type,
+    icon: type === 'income' ? 'fee' : 'other',
+    color: type === 'income' ? 'green' : 'orange',
+  })
+}
+
+async function onRenameTemplateItem(item: TemplateItemInput): Promise<void> {
+  if (selectedIsBuiltin.value) return
+  const result = await ElMessageBox.prompt('修改后的名称', '重命名分类', {
+    confirmButtonText: '保存',
+    cancelButtonText: '取消',
+    inputValue: item.name,
+    inputValidator: (value: string) => {
+      const name = (value ?? '').trim()
+      if (!name) return '名称不能为空'
+      if (name.length > 20) return '名称不超过 20 个字'
+      if (name !== item.name
+        && draftItems.value.some((other) => other !== item && other.type === item.type && other.name === name)) {
+        return '这套模板里已有同名分类'
+      }
+      return true
+    },
+  }).catch(() => null)
+  if (!result) return
+  item.name = result.value.trim()
+}
+
+function onRemoveTemplateItem(item: TemplateItemInput): void {
+  if (selectedIsBuiltin.value) return
+  draftItems.value = draftItems.value.filter((other) => other !== item)
+}
+
+async function onSaveTemplateItems(): Promise<void> {
+  const template = selectedTemplate.value
+  if (!template || template.builtin || savingItems.value || !templateDirty.value) return
+  if (draftItems.value.length === 0) {
+    ElMessage.warning('模板至少保留一个分类')
+    return
+  }
+  savingItems.value = true
+  try {
+    const saved = await updateTemplate(template.id, template.name, draftItems.value)
+    await loadTemplates()
+    templateId.value = saved.id
+    syncDraft()
+    ElMessage.success(`已保存「${saved.name}」`)
+  } catch {
+    // 校验失败等 400 已由拦截器提示
+  } finally {
+    savingItems.value = false
+  }
+}
 
 /** 当前账本已归档 = 只读：不能增删改分类（模板是账号级的，仍可维护） */
 const archived = computed(() => (auth.books.find((b) => b.current) ?? null)?.archived === true)
@@ -351,7 +487,7 @@ onMounted(async () => {
       </header>
 
       <div class="tpl-row">
-        <el-select v-model="templateId" class="tpl-select" placeholder="选择模板">
+        <el-select v-model="templateId" class="tpl-select" placeholder="选择模板" @change="onTemplateChange">
           <el-option
             v-for="t in templates"
             :key="t.id"
@@ -369,35 +505,68 @@ onMounted(async () => {
       </div>
 
       <p class="tpl-tip">
-        下面的 <b>支出 / 收入</b> 就是所选模板的内容，切模板立刻变；它们只属于模板，<b>不改当前账本的分类</b>。
-        「新建模板」自己排分类，「存为模板」把当前账本的分类复制一份。模板在<b>新建账本</b>时选用，
-        账本一旦有了流水就不能再换。
+        下面两张卡片就是<b>所选模板</b>的分类，直接点条目改名、× 删除、底部「＋ 添加」。
+        改完点「保存模板」才生效；内置模板只读，想改先「存为模板」复制一份。
+        模板只属于账号，<b>不影响当前账本的分类</b>。
       </p>
 
-      <!-- 所选模板的条目（与当前账本无关） -->
       <div class="tpl-preview">
         <div class="tpl-col">
           <header class="tpl-col-head">
-            支出<span class="tpl-col-count">{{ templateExpense.length }}</span>
+            支出<span class="tpl-col-count">{{ draftExpense.length }}</span>
           </header>
-          <div class="tpl-chips">
-            <span v-for="item in templateExpense" :key="item.name" class="tpl-chip">
-              {{ iconOf(item.icon) }} {{ item.name }}
-            </span>
-            <span v-if="templateExpense.length === 0" class="tpl-empty">没有支出分类</span>
+          <div class="tpl-items">
+            <div v-for="item in draftExpense" :key="`expense-${item.name}`" class="tpl-item">
+              <span class="tpl-item-name">{{ iconOf(item.icon) }} {{ item.name }}</span>
+              <span v-if="!selectedIsBuiltin" class="tpl-item-actions">
+                <el-button text size="small" @click="onRenameTemplateItem(item)">改名</el-button>
+                <el-button text size="small" type="danger" @click="onRemoveTemplateItem(item)">删除</el-button>
+              </span>
+            </div>
+            <p v-if="draftExpense.length === 0" class="tpl-empty">没有支出分类</p>
+            <el-button
+              v-if="!selectedIsBuiltin"
+              text
+              size="small"
+              class="tpl-add"
+              @click="onAddTemplateItem('expense')"
+            >
+              ＋ 添加支出分类
+            </el-button>
           </div>
         </div>
+
         <div class="tpl-col">
           <header class="tpl-col-head">
-            收入<span class="tpl-col-count">{{ templateIncome.length }}</span>
+            收入<span class="tpl-col-count">{{ draftIncome.length }}</span>
           </header>
-          <div class="tpl-chips">
-            <span v-for="item in templateIncome" :key="item.name" class="tpl-chip">
-              {{ iconOf(item.icon) }} {{ item.name }}
-            </span>
-            <span v-if="templateIncome.length === 0" class="tpl-empty">没有收入分类</span>
+          <div class="tpl-items">
+            <div v-for="item in draftIncome" :key="`income-${item.name}`" class="tpl-item">
+              <span class="tpl-item-name">{{ iconOf(item.icon) }} {{ item.name }}</span>
+              <span v-if="!selectedIsBuiltin" class="tpl-item-actions">
+                <el-button text size="small" @click="onRenameTemplateItem(item)">改名</el-button>
+                <el-button text size="small" type="danger" @click="onRemoveTemplateItem(item)">删除</el-button>
+              </span>
+            </div>
+            <p v-if="draftIncome.length === 0" class="tpl-empty">没有收入分类</p>
+            <el-button
+              v-if="!selectedIsBuiltin"
+              text
+              size="small"
+              class="tpl-add"
+              @click="onAddTemplateItem('income')"
+            >
+              ＋ 添加收入分类
+            </el-button>
           </div>
         </div>
+      </div>
+
+      <div v-if="!selectedIsBuiltin" class="tpl-save">
+        <span v-if="templateDirty" class="tpl-dirty">有未保存的改动</span>
+        <el-button type="primary" :disabled="!templateDirty" :loading="savingItems" @click="onSaveTemplateItems">
+          保存模板
+        </el-button>
       </div>
     </section>
 
@@ -573,6 +742,56 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.tpl-items {
+  display: grid;
+  gap: 4px;
+}
+
+.tpl-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.tpl-item:hover {
+  background: var(--el-bg-color);
+}
+
+.tpl-item-name {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tpl-item-actions {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.tpl-add {
+  justify-self: start;
+  margin-top: 2px;
+}
+
+.tpl-save {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.tpl-dirty {
+  font-size: 12px;
+  color: var(--el-color-warning);
 }
 
 .tpl-chip {
