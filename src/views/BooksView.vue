@@ -385,9 +385,6 @@ onMounted(() => {
   <div class="books-page">
     <div class="page-head">
       <h2 class="page-title">账本</h2>
-      <p class="page-desc">
-        一个账本 = 一套独立数据（分类、流水、统计、导出都跟着当前账本走）。学期结束就归档成只读。
-      </p>
     </div>
 
     <el-tabs v-model="tab">
@@ -584,12 +581,6 @@ onMounted(() => {
 .page-title {
   margin: 0;
   font-size: 18px;
-}
-
-.page-desc {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 
 .create-row {

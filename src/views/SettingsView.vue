@@ -177,7 +177,6 @@ async function confirmDelete(): Promise<void> {
   <div class="settings-page">
     <div class="page-head">
       <h2 class="page-title">账号设置</h2>
-      <p class="page-desc">用户名只是显示名，可随时修改；邮箱是登录凭据，改它需要输入当前密码。</p>
     </div>
 
     <section class="card">
@@ -292,12 +291,6 @@ async function confirmDelete(): Promise<void> {
 .page-title {
   margin: 0;
   font-size: 18px;
-}
-
-.page-desc {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 
 .card {

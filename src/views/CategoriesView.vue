@@ -17,24 +17,12 @@ import { colorOf, iconOf } from '../utils/category'
 import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
 
 /**
- * 分类模板管理页（账号级）。
- *
- * <p>页面下半部分那两张「支出 / 收入」卡片，展示并编辑的就是**所选模板**的条目。
- * **没有草稿、没有「保存」按钮：加一条 / 改一条 / 删一条都立刻提交**
- * （`PUT /api/category-templates/{id}`，后端按条目 id 增量合并）。
- * 保存会同步到用过这套模板的账本（见后端 `CategoryTemplateSyncService`）：
- * 新增补分类、改名改分类（流水跟着走）、删除要求该分类没有流水。
- *
- * <p>「班级班费」是**注册时自动建好的真实模板**，和其他模板一样能改名、增删条目、删除。
- * `id=0` 的只读投影只在「账号一套模板都没有」时兜底，正常用不到。
+ * 分类模板页：两张卡片就是所选模板的条目，改一条存一条（没有草稿和保存按钮）。
+ * 保存会同步到用过这套模板的账本。
  */
 
 const auth = useAuthStore()
-/**
- * 「记一笔」弹窗挂在 AppLayout 上，用的是 layout 里那份分类缓存。
- * 模板保存会改账本分类，所以这里必须让它重拉一次，否则弹窗下拉还是旧的
- * （表现就是「模板加了分类，记一笔里看不到」）。
- */
+/** 「记一笔」弹窗用的是 layout 里的分类缓存，模板改完要让它重拉一次 */
 const shell = useShell()
 
 const GROUPS: { type: TxType; title: string; short: string }[] = [
@@ -42,7 +30,7 @@ const GROUPS: { type: TxType; title: string; short: string }[] = [
   { type: 'income', title: '收入分类', short: '收入' },
 ]
 
-/** 内置模板的虚拟 id（后端约定 0，不入库） */
+/** 内置模板的虚拟 id */
 const BUILTIN_ID = 0
 
 const templates = ref<CategoryTemplate[]>([])
@@ -55,22 +43,16 @@ const selectedTemplate = computed(
 )
 const selectedIsBuiltin = computed(() => selectedTemplate.value?.builtin ?? true)
 
-/* ---------- 当前模板的条目：改一下就存一下（没有草稿、没有「保存」按钮） ---------- */
-
 const items = ref<TemplateItemInput[]>([])
 const saving = ref(false)
-/**
- * 勾选状态：**必须声明在下面那个 immediate watcher 之前**，
- * 否则 watcher 在 setup 里同步执行时会触发 TDZ（Cannot access 'selectedKeys' before initialization），
- * 整个页面 setup 抛错——表现出来就是「页面状态不对/提示乱跳」。
- */
+/** 必须声明在下面的 immediate watcher 之前，否则会触发 TDZ */
 const selectedKeys = ref<string[]>([])
 
 function syncItems(): void {
   const template = selectedTemplate.value
   items.value = template
     ? template.items.map((item) => ({
-        // id 要一路带到后端：它决定这次是「改名」还是「删旧建新」
+        // id 决定后端这次是「改名」还是「删旧建新」
         id: item.id,
         name: item.name,
         type: item.type,
@@ -90,10 +72,7 @@ watch(
   { immediate: true },
 )
 
-/**
- * 下拉用 `:model-value` 单向绑定（不是 v-model）：切换必须由这里写 templateId，
- * 否则选中值先变、列表还是旧的。现在是实时保存，切换不需要再确认。
- */
+/** 下拉是单向绑定，切换必须由这里写 templateId，否则选中值和列表会对不上 */
 function onTemplateChange(next: number): void {
   if (next === templateId.value) return
   templateId.value = next
@@ -101,11 +80,7 @@ function onTemplateChange(next: number): void {
   selectedKeys.value = []
 }
 
-/**
- * 把整份条目写回后端（`PUT` 按 id 增量合并，同时同步到用过这套模板的账本）。
- * <p>失败（重名、删掉有流水的分类…）由拦截器弹提示，这里再拉一次列表，
- * 保证界面和后端一致——不做「假装成功」的乐观更新。
- */
+/** 把整份条目写回后端；失败时重新拉列表，避免界面和后端不一致 */
 async function persist(next: TemplateItemInput[], success: string): Promise<boolean> {
   const template = selectedTemplate.value
   if (!template || template.builtin || saving.value) return false
@@ -144,11 +119,7 @@ const editingItem = ref<TemplateItemInput | null>(null)
 const formType = ref<TxType>('expense')
 const formInitial = ref<{ name: string; icon: string | null; color: string | null } | null>(null)
 
-/**
- * 兜底：只有「账号里一套模板都没有」时，后端才返回 id=0 的只读投影（内容还是那 11 条）。
- * 正常账号（含历史账号，见 DefaultTemplateInitializer）都有真实模板，走不到这里。
- * <p>保留复制路径是为了让空模板账号点「编辑」时能一键复制成自己的模板，而不是卡住。
- */
+/** 只有账号一套模板都没有时才会拿到 id=0 的只读投影，编辑前先复制成真实模板 */
 async function ensureEditableTemplate(): Promise<boolean> {
   if (!selectedIsBuiltin.value) return true
   const confirmed = await ElMessageBox.confirm(
@@ -168,7 +139,7 @@ async function ensureEditableTemplate(): Promise<boolean> {
     name = `${base}${i}`
   }
   try {
-    // 复制出来的是**新模板**，条目 id 必须去掉：带过去会被后端当成「改原来那套模板的条目」
+    // 复制出来的是新模板，条目 id 必须去掉
     const clone = await createTemplate(
       name,
       items.value.map(({ id: _id, ...rest }) => rest),
@@ -200,7 +171,7 @@ async function openEdit(item: TemplateItemInput): Promise<void> {
   dialogVisible.value = true
 }
 
-/** 弹窗提交：新增或改某一条（含图标/颜色），**立刻保存**，成功才关弹窗 */
+/** 提交即保存，成功才关弹窗 */
 async function onItemSubmit(payload: {
   name: string
   type: TxType
@@ -215,7 +186,7 @@ async function onItemSubmit(payload: {
     return
   }
   const editing = editingItem.value
-  // 编辑时保留原条目 id：后端据此「改这一条」而不是「删旧建新」
+  // 编辑时保留原 id，后端才会「改这一条」而不是「删旧建新」
   const next = editing
     ? items.value.map((item) => (item === editing ? { ...item, ...payload } : item))
     : [...items.value, payload]
@@ -252,7 +223,7 @@ function toggleAll(checked: boolean | string | number): void {
   selectedKeys.value = checked ? items.value.map(itemKey) : []
 }
 
-/** 单行勾选：selectedKeys 是普通数组，用 includes 驱动复选框（不是 el-checkbox-group） */
+/** selectedKeys 是普通数组，用 includes 驱动复选框 */
 function toggleKey(key: string, checked: boolean | string | number): void {
   const rest = selectedKeys.value.filter((value) => value !== key)
   selectedKeys.value = checked ? [...rest, key] : rest
@@ -301,23 +272,20 @@ async function onBatchDelete(): Promise<void> {
 
 /* ---------- 模板本身：新建 / 存为 / 重命名 / 删除 ---------- */
 
-/** 模板列表变更后（例如刚保存过条目）把本地列表对齐到最新 */
+/** 列表变更后把本地对齐到最新；选中项必须是列表里真实存在的一项（老账本可能是 NULL → id=0） */
 async function loadTemplates(): Promise<void> {
   try {
     templates.value = await listTemplates()
   } catch {
     return
   }
-  // 选中项必须是列表里真实存在的一项：
-  // 老账本的 book.category_template_id 可能还是 NULL（默认模板是后来才落库的），
-  // onMounted 会把 NULL 当成 id=0，而下拉里已经没有 id=0 的选项——原来会直接显示一个裸「0」。
   if (!templates.value.some((t) => t.id === templateId.value)) {
     templateId.value = templates.value[0]?.id ?? BUILTIN_ID
   }
   syncItems()
 }
 
-/** 删模板会把引用它的账本指回内置，所以 books 也要重拉 */
+/** 删模板后账本会指回内置，books 也要重拉 */
 async function reloadBooks(): Promise<void> {
   auth.setBooks(await listBooks().catch(() => auth.books))
 }
@@ -409,7 +377,7 @@ async function onDeleteTemplate(): Promise<void> {
 }
 
 onMounted(async () => {
-  // 默认选中「当前账本当初用的那套模板」，方便从常见的那套开始看
+  // 默认选中当前账本用的那套模板
   const current = auth.books.find((b) => b.current) ?? auth.books[0] ?? null
   templateId.value = current?.categoryTemplateId ?? BUILTIN_ID
   await loadTemplates()
@@ -420,10 +388,6 @@ onMounted(async () => {
   <div class="cat-page">
     <div class="page-head">
       <h2 class="page-title">分类模板</h2>
-      <p class="page-desc">
-        <b>实时保存</b>：加一条、改一条、删一条都立刻生效，没有「保存」按钮。
-        改动会同步到用过这套模板的账本（新增补分类、改名改分类、删除要求该分类没有流水）。
-      </p>
     </div>
 
     <section class="tpl-card">
@@ -444,12 +408,6 @@ onMounted(async () => {
           删除模板
         </el-button>
       </div>
-
-      <p class="tpl-tip">
-        「班级班费」是注册时自动给你建好的模板，和自建模板一样可以改名、增删条目、删除。
-        <b>每改一处都立刻保存并同步到用过这套模板的账本</b>：新增的会补进账本，改名会跟着改，
-        删掉的分类若已经有流水会被拦下来（先改流水再删）。
-      </p>
     </section>
 
     <section class="batch-bar">
@@ -556,12 +514,6 @@ onMounted(async () => {
   font-size: 18px;
 }
 
-.page-desc {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
 .cat-card {
   margin-bottom: 16px;
   padding: 16px;
@@ -586,13 +538,6 @@ onMounted(async () => {
 
 .tpl-select {
   width: 220px;
-}
-
-.tpl-tip {
-  margin: 10px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--el-text-color-secondary);
 }
 
 .tpl-dirty {

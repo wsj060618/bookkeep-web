@@ -59,7 +59,6 @@ onMounted(() => {
     <div class="page-head">
       <div>
         <h2 class="page-title">收支统计</h2>
-        <p class="page-desc">按月汇总当前账本；左边看钱从哪来，右边看钱花哪了。</p>
       </div>
       <el-date-picker
         v-model="month"
@@ -149,12 +148,6 @@ onMounted(() => {
 .page-title {
   margin: 0;
   font-size: 18px;
-}
-
-.page-desc {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 
 .month-picker {

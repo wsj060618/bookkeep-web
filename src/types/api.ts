@@ -1,34 +1,20 @@
 /**
- * 后端 API 的「形状」定义（TypeScript 术语：interface / 接口）。
- *
- * 这些接口不是运行时代码，编译后会被完全擦除，唯一作用是：
- * 写 `resp.user.nickName` 时 TS 立刻报错说「User 上没有 nickName」。
- * 也就是说，字段名写错、类型对不上，在 `npm run build` 就暴露，
- * 不用等浏览器跑到那一行才发现（这正是选 TS 的理由）。
- *
- * 注意：这里的字段名必须和 Java 侧的 DTO **逐字一致**（大小写敏感）。
- * 对照表：
- *   User       ← com.bookkeep.model.dto.resp.UserResp
- *   Book       ← com.bookkeep.model.dto.resp.BookResp
- *   LoginResp  ← com.bookkeep.model.dto.resp.LoginResp
- *   ApiResult  ← com.bookkeep.common.result.Result
- *   PageResult ← com.bookkeep.common.result.PageResult
+ * 后端接口的数据形状。字段名必须和 Java DTO 一致，类型对不上 build 就会报错。
  */
 
-/** 统一信封 {code, message, data}，`T` 是 data 的类型（泛型） */
+/** 统一信封，T 是 data 的类型 */
 export interface ApiResult<T> {
   code: number
   message: string
   data: T
 }
 
-/** 分页信封。PLAN §5.0 第 1 条定死：字段就是 total / list，入参就是 page / size */
+/** 分页：字段固定 total / list，入参 page / size */
 export interface PageResult<T> {
   total: number
   list: T[]
 }
 
-/** 用户信息。后端 UserResp 不含 password / deleted，这里也不写 */
 export interface User {
   id: number
   username: string
@@ -37,29 +23,23 @@ export interface User {
   currentBookId: number | null
 }
 
-/** 账本类型：项目只有班级账本，固定 'class'（后端 book.type 同值） */
 export type BookType = 'class'
 
-/** 账本。current 由后端算好（是不是 user.current_book_id），前端不用自己比 */
 export interface Book {
   id: number
   name: string
   type: BookType
-  /**
-   * 这本账本的分类是从哪套模板复制的；**null = 老数据**（当时内置模板还没有行，
-   * 注册时建的默认模板现在也是真实行，id > 0）。语义是「基于哪套模板」，用户手工增删改分类后不会清空。
-   */
+  /** 分类来自哪套模板；null = 老数据 */
   categoryTemplateId: number | null
-  /** 学期截止日期（yyyy-MM-dd）；null = 没填。只用于展示，不参与统计 */
+  /** 学期截止日期，只做展示 */
   semesterEnd: string | null
-  /** 学期归档：true = 只读（不能记流水/改分类，但仍可改名、改截止日期、取消归档、导出、公示） */
+  /** 归档 = 只读 */
   archived: boolean
   current: boolean
 }
 
-/** 分类模板条目，字段与分类一一对应（新建账本时按此逐条预置） */
+/** 模板条目；id 是 category_template_item.id，内置投影为 null */
 export interface CategoryTemplateItem {
-  /** `category_template_item.id`；内置模板的只读投影为 null */
   id: number | null
   name: string
   type: TxType
@@ -68,11 +48,7 @@ export interface CategoryTemplateItem {
   sortOrder: number
 }
 
-/**
- * 分类模板，对应后端 CategoryTemplateResp。
- * **跟账号走**（不按账本隔离）：新建账本时选一套来预置分类。
- * `id === 0` 只在「账号一套模板都没有」时兜底出现（只读）；正常账号的「班级班费」是一条真实模板，可改可删。
- */
+/** 分类模板：账号级，新建账本时选一套预置；id=0 是「一套都没有」时的只读兜底 */
 export interface CategoryTemplate {
   id: number
   name: string
@@ -80,126 +56,101 @@ export interface CategoryTemplate {
   items: CategoryTemplateItem[]
 }
 
-/**
- * 提交模板条目时不用带 sortOrder：后端按传入顺序（先支出后收入）自己编号。
- * **`id` 必须带回后端**：它决定这次是「改名」还是「删旧建新」——
- * 改名会同步到账本里那条分类（流水不丢），删旧建新会被流水挡住。
- * 新增条目不带 id。
- */
+/** 提交条目时不带 sortOrder（后端按顺序编号）；已存在的条目必须带 id，否则会被当成删旧建新 */
 export type TemplateItemInput = Pick<CategoryTemplateItem, 'name' | 'type' | 'icon' | 'color'> & {
   id?: number | null
 }
 
-/** POST /api/books/{id}/share 的响应：只给 token 与到期时间，URL 由前端用 origin 拼 */
+/** 单本分享的响应 */
 export interface ShareLink {
   token: string
-  /** yyyy-MM-dd HH:mm:ss，分享时刻 + 3 天 */
+  /** 分享时刻 + 3 天 */
   expiresAt: string
 }
 
-/**
- * POST /api/books/share 的响应：**一条链接** + 它包含的账本。
- * 每次分享都换新 token，旧链接立即失效。
- */
+/** 一条链接可包含多本账本；每次分享都换新 token */
 export interface ShareLinkCreated {
   token: string
-  /** yyyy-MM-dd HH:mm:ss，分享时刻 + 3 天 */
   expiresAt: string
-  /** 这条链接能看到的账本（按勾选顺序） */
   books: { id: number; name: string }[]
 }
 
-/** POST /api/auth/forgot-password —— 只填邮箱（邮箱是登录凭据且唯一）；返回永远成功 */
+/** 找回密码总是返回成功（不暴露邮箱是否注册过） */
 export interface ForgotPasswordReq {
   email: string
 }
 
-/** POST /api/auth/reset-password —— 邮件里的一次性 token，15 分钟有效 */
+/** 邮件里的一次性 token，15 分钟有效 */
 export interface ResetPasswordReq {
   token: string
   /** 6–32 位 */
   newPassword: string
 }
 
-/** PUT /api/users/me —— 改用户名 / 登录邮箱；**改邮箱时必须带当前密码** */
+/** 改用户名 / 登录邮箱；改邮箱时必须带当前密码 */
 export interface UserUpdateReq {
   username: string
   email: string
-  /** 仅当 email 与当前值不同时必填 */
+  /** 仅当 email 变化时必填 */
   password?: string
 }
 
-/** PUT /api/users/me/password —— 必须带旧密码；成功后所有旧 token 失效 */
+/** 改密码；成功后旧 token 全部失效 */
 export interface PasswordUpdateReq {
   oldPassword: string
   /** 6–32 位 */
   newPassword: string
 }
 
-/** DELETE /api/users/me —— 密码二次确认 */
 export interface AccountDeleteReq {
   password: string
 }
 
-/** 修改账本（改名 + 可选改学期截止日期），对应后端 BookUpdateReq */
+/** 改名 + 可选改学期截止日期 */
 export interface BookUpdateReq {
-  /** ≤50 字，不能全空格 */
   name: string
-  /** 学期截止日期 yyyy-MM-dd；**省略/null = 不改**（不是清空） */
+  /** 省略 = 不改（不是清空） */
   semesterEnd?: string | null
 }
 
-/**
- * 新建账本的请求体，对应后端 BookCreateReq。
- * `templateId` 决定新账本预置哪套分类：传列表中某一套的 id；**省略 / 0 / null 才回落到内置预设**。
- */
+/** 新建账本；templateId 为空时用内置预设 */
 export interface BookCreateReq {
-  /** ≤50 字，不能全空格 */
   name: string
   templateId?: number | null
-  /** 学期截止日期 yyyy-MM-dd，可空 */
   semesterEnd?: string | null
 }
 
-/** 回收站里的账本，对应后端 BookTrashResp */
+/** 回收站里的账本，保留 15 天 */
 export interface BookTrash {
   id: number
   name: string
-  /** yyyy-MM-dd HH:mm:ss */
   deletedAt: string
-  /** 彻底删除时刻 = deletedAt + 15 天 */
+  /** deletedAt + 15 天 */
   expireAt: string
 }
 
-/**
- * 注册请求体，对应后端 RegisterReq。没有 bookType——项目只有班级账本一种，
- * 注册成功即建账本 + 预置 13 条分类（后端事务内完成）。
- */
+/** 注册即建账本；只有班级账本一种，所以没有 bookType */
 export interface RegisterReq {
-  /** 显示名（不是登录凭据）：4–20 位字母/数字/下划线，区分大小写 */
+  /** 显示名（不是登录凭据），≤20 字 */
   username: string
-  /** 6–32 位明文，后端 BCrypt 加密后落库 */
+  /** 6–32 位，后端 BCrypt 加密 */
   password: string
-  /** 登录凭据：必填且唯一 */
+  /** 登录凭据，必填且唯一 */
   email: string
-  /** 可空，后端默认「班级账本」 */
+  /** 可空，默认「班级账本」 */
   bookName?: string | null
 }
 
-/**
- * 登录响应。
- * 注意 books 和 user 是**平级**的（后端 PLAN §5.1 特意这么定），不是 user.books。
- */
+/** books 和 user 平级，不是 user.books */
 export interface LoginResp {
   token: string
   user: User
   books: Book[]
 }
 
-/** 收支方向。后端用 String 存，只有这两个值 */
 export type TxType = 'income' | 'expense'
 
-/** 分类。icon / color 是语义 key，由前端映射成图标组件与颜色（后端不管长什么样） */
+/** 分类；icon / color 是语义 key，由前端映射 */
 export interface Category {
   id: number
   name: string
@@ -209,7 +160,6 @@ export interface Category {
   sortOrder: number
 }
 
-/** 新增 / 修改分类的请求体，对应后端 CategoryReq */
 export interface CategoryReq {
   name: string
   type: TxType
@@ -217,54 +167,45 @@ export interface CategoryReq {
   color?: string | null
 }
 
-/**
- * 流水。列表直接带 categoryName/Icon/Color，前端不做二次查询（PLAN §5.0 第 5 条）。
- * amount 是**字符串**（后端 BigDecimal 全局按字符串序列化）：不要 parseFloat 后累加，
- * 要算就交给后端，或者至少用整数分。
- */
+/** 流水；列表自带分类名，amount 是字符串（别 parseFloat 累加） */
 export interface Transaction {
   id: number
   type: TxType
   amount: string
-  /** yyyy-MM-dd */
   transDate: string
   note: string | null
   categoryId: number
   categoryName: string
   categoryIcon: string | null
   categoryColor: string | null
-  /** 票据张数（列表徽标）；图片本身走 /api/transactions/{id}/receipts/{rid} */
+  /** 票据张数（徽标） */
   receiptCount: number
 }
 
-/** 票据列表项，对应后端 ReceiptResp（不含文件内容，也不含磁盘路径） */
 export interface Receipt {
   id: number
   title: string
   originalName: string | null
   sizeBytes: number
-  /** yyyy-MM-dd HH:mm:ss */
   createdAt: string
 }
 
-/** 公示页的票据：只有 id 与标题，图片走 /api/public/report/{token}/receipts/{id} */
+/** 公示页的票据只有 id 和标题 */
 export interface PublicReceipt {
   id: number
   title: string
 }
 
-/** 新增 / 修改流水的请求体，对应后端 TransactionReq */
 export interface TransactionReq {
   categoryId: number
   type: TxType
-  /** 字符串传也行（如 '12.50'），后端按 BigDecimal 解析 */
+  /** 字符串金额，如 '12.50' */
   amount: string
-  /** yyyy-MM-dd */
   transDate: string
   note?: string | null
 }
 
-/** 流水列表查询条件，字段名与后端 TransactionQuery 逐字一致（page 从 1 开始） */
+/** 查询条件，字段名与后端 TransactionQuery 一致（page 从 1 开始） */
 export interface TransactionQuery {
   page?: number
   size?: number
@@ -275,19 +216,19 @@ export interface TransactionQuery {
   keyword?: string
 }
 
-/** 月度统计，对应后端 SummaryResp。month 是后端回显的实际统计月份（不传时是当月） */
+/** 月度统计；month 是后端回显的实际月份 */
 export interface Summary {
   /** yyyy-MM */
   month: string
   income: string
   expense: string
-  /** 本月收支差，不是累计余额 */
+  /** 本月收支差 */
   balance: string
-  /** 全账本累计余额 */
+  /** 全账本累计 */
   totalBalance: string
 }
 
-/** 分类占比。percent 是两位小数字符串，各项相加可能不等于 100.00，只做展示 */
+/** percent 是两位小数字符串，相加不一定 100.00 */
 export interface CategoryStat {
   categoryId: number
   categoryName: string
@@ -297,7 +238,7 @@ export interface CategoryStat {
   percent: string
 }
 
-/** 公示页的流水行：比普通列表多一个 balanceAfter（全账本范围内的逐行结余），且没有 id */
+/** 公示页的流水行：多一个 balanceAfter，没有 id */
 export interface ReportTransaction {
   transDate: string
   type: TxType
@@ -307,14 +248,12 @@ export interface ReportTransaction {
   categoryIcon: string | null
   categoryColor: string | null
   balanceAfter: string
-  /** 票据张数 + 只读列表（id 与标题） */
   receiptCount: number
   receipts: PublicReceipt[]
 }
 
-/** 导入流水的结果（POST /api/transactions/import）：行级失败带行号与原因 */
+/** 行级失败带行号（1 基，含表头）与原因 */
 export interface ImportFailedRow {
-  /** 文件行号（1 基，含表头），和 Excel 左侧一致 */
   line: number
   reason: string
 }
@@ -324,26 +263,24 @@ export interface ImportResult {
   failed: ImportFailedRow[]
 }
 
-/** 票据导入的失败项（zip 里的相对路径） */
 export interface ReceiptImportFailed {
   file: string
   reason: string
 }
 
-/** 票据导入结果（单笔 zip / 账本包里的票据部分） */
 export interface ReceiptImportResult {
   success: number
   failed: ReceiptImportFailed[]
 }
 
-/** 账本包（zip）导入：流水与票据分开报（POST /api/transactions/import/zip） */
+/** 账本包导入：流水与票据分开报 */
 export interface ZipImportResult {
   success: number
   failed: ImportFailedRow[]
   receipts: ReceiptImportResult
 }
 
-/** 单本账本在公示页上的内容（一条链接可以带多本，所以是数组里的一项） */
+/** 公示页里的一本账本 */
 export interface PublicBookReport {
   bookId: number
   bookName: string
@@ -353,20 +290,15 @@ export interface PublicBookReport {
   expense: string
   balance: string
   totalBalance: string
-  /** 支出分类占比（金额降序） */
   expenseCategories: CategoryStat[]
-  /** 收入分类占比（金额降序）——公示页也要能看「钱从哪来」 */
   incomeCategories: CategoryStat[]
-  /** 按日期升序，逐行结余从上往下读 */
+  /** 按日期升序 */
   transactions: ReportTransaction[]
 }
 
-/**
- * 免登录公示页 GET /api/public/report/{shareToken}，不含任何个人信息。
- * **一条链接可以带多本账本**：`books` 里每本一套数字，前端用标签页切换。
- */
+/** 免登录公示页；一条链接可带多本账本 */
 export interface PublicReport {
-  /** 链接到期时间 yyyy-MM-dd HH:mm:ss */
+  /** yyyy-MM-dd HH:mm:ss */
   expiresAt: string
   books: PublicBookReport[]
 }

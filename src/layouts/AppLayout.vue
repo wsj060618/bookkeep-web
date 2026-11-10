@@ -355,7 +355,7 @@ onMounted(async () => {
       @category-created="onCategoryCreated"
     />
 
-    <el-dialog v-model="shareVisible" title="分享账本（生成一条公示链接）" width="min(560px, 94vw)">
+    <el-dialog v-model="shareVisible" title="分享账本" width="min(560px, 94vw)">
       <div class="share-toolbar">
         <el-checkbox
           :model-value="allSelected"
@@ -375,10 +375,7 @@ onMounted(async () => {
         </el-checkbox>
       </el-checkbox-group>
 
-      <p class="share-tip">
-        选中的账本会**放在同一条链接**里，点开就能切换查看，<strong>3 天有效</strong>。
-        每次生成都会换新链接，之前发出去的那条随即失效。
-      </p>
+      <p class="share-tip">链接 <strong>3 天有效</strong>。</p>
 
       <div v-if="shareResult" class="share-result">
         <div class="share-result-head">

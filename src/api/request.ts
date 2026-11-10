@@ -4,15 +4,10 @@ import type { ApiResult } from '../types/api'
 import { clearToken, getToken } from '../utils/token'
 
 /**
- * 全项目唯一的 HTTP 客户端。业务代码不直接用 axios，只用下面导出的 get / post。
- *
- * 这里落实了 PLAN §5 的后端错误策略，必须两边对齐：
- *   1. 业务错误  → HTTP 200 + body.code（400/401/403 都可能出现在 200 里）
- *   2. 认证/授权 → 真实 HTTP 401 / 403
- * 所以拦截器要处理**两条**路径：成功回调里看 code，失败回调里看 status。
- *
- * 为什么不在这里 import router 做跳转：router → views → api → request 会形成循环依赖，
- * 模块初始化时容易拿到 undefined。用整页跳转最省事，顺带把内存状态全部清干净。
+ * 全项目唯一的 HTTP 客户端。
+ * <p>后端错误有两套：业务错误是 HTTP 200 + body.code，认证/授权是真实 401/403，
+ * 所以成功回调和失败回调都要处理。
+ * <p>不在这里 import router（会循环依赖），直接整页跳转。
  */
 
 const http: AxiosInstance = axios.create({
@@ -109,8 +104,7 @@ export async function del<T>(url: string, body?: unknown): Promise<T> {
 }
 
 // ---------- 文件下载 ----------
-// 导出成功时返回 text/csv（不是 JSON 信封），而失败仍是 200 + JSON，
-// 所以不能复用上面的实例——那里按 body.code 判断，blob 上根本没有 code。
+// 成功是文件流，失败仍是 200 + JSON；blob 上没有 code，所以单独一个实例。
 
 const httpFile: AxiosInstance = axios.create({
   baseURL: '/api',
