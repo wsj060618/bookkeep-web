@@ -59,10 +59,7 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--el-bg-color);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  padding: 10px 0;
 }
 
 .tx-icon {

@@ -590,12 +590,21 @@ onMounted(() => {
 
 .tx-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.tx-row:last-child {
+  border-bottom: none;
+}
+
+.tx-row:hover {
+  background: var(--el-fill-color-lighter);
 }
 
 .tx-check {
-  margin-top: 10px;
   flex: none;
 }
 
@@ -607,7 +616,11 @@ onMounted(() => {
 .tx-list {
   min-height: 200px;
   display: grid;
-  gap: 2px;
+  gap: 0;
+  border-radius: 10px;
+  background: var(--el-bg-color);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  overflow: hidden;
 }
 
 .pager {
