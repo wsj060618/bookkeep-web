@@ -1,4 +1,4 @@
-import type { Book, BookCreateReq, BookShare, BookTrash, BookUpdateReq, ShareLink } from '../types/api'
+import type { Book, BookCreateReq, BookTrash, BookUpdateReq, ShareLink, ShareLinkCreated } from '../types/api'
 import { del, get, post, put } from './request'
 
 /** 账本接口，对应后端 BookController（增删改查 + 回收站，PLAN §5.2） */
@@ -59,11 +59,11 @@ export function createShareLink(id: number): Promise<ShareLink> {
 }
 
 /**
- * POST /api/books/share —— 批量出链接（分享弹窗用）。
- * 已有**未过期**链接的账本原样复用（`reused=true`），只给没有/过期的生成新的。
+ * POST /api/books/share —— **一条链接**，包含选中的全部账本（分享弹窗用）。
+ * 每次分享都换新 token，旧链接立即失效。
  */
-export function shareBooks(ids: number[]): Promise<BookShare[]> {
-  return post<BookShare[]>('/books/share', { ids })
+export function shareBooks(ids: number[]): Promise<ShareLinkCreated> {
+  return post<ShareLinkCreated>('/books/share', { ids })
 }
 
 /** POST /api/books/batch-delete —— 批量移入回收站，返回剩余账本列表（可能已换当前账本） */

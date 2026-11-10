@@ -7,7 +7,7 @@ import { listCategories } from '../api/category'
 import { useAuthStore } from '../stores/auth'
 import { SHELL_KEY, type ShellApi } from '../composables/shell'
 import TransactionFormDialog from '../components/TransactionFormDialog.vue'
-import type { BookShare, Category, Transaction } from '../types/api'
+import type { Category, ShareLinkCreated, Transaction } from '../types/api'
 
 /**
  * 桌面壳：左侧竖栏 + 顶栏 + 内容区（最大 1440）。
@@ -68,15 +68,15 @@ const shell: ShellApi = {
 }
 provide(SHELL_KEY, shell)
 
-/* ---------- 分享（多选账本 → 每本一条公示链接） ---------- */
+/* ---------- 分享（多选账本 → 一条链接） ---------- */
 
 const shareVisible = ref(false)
 const shareLoading = ref(false)
-/** 勾选的账本 id；默认只勾当前账本，避免一进来就「全选」误发一堆链接 */
+/** 勾选的账本 id；默认只勾当前账本，避免一进来就「全选」误发一堆账本 */
 const shareSelected = ref<number[]>([])
-const shareResults = ref<BookShare[]>([])
-/** 结果里每一行的真实输入框：局域网 http 下复制要选中它再 execCommand */
-const shareInputRefs = ref<Record<number, { input?: HTMLInputElement } | null>>({})
+const shareResult = ref<ShareLinkCreated | null>(null)
+/** 结果里那个只读输入框：局域网 http 下复制要选中它再 execCommand */
+const shareInputRef = ref<{ input?: HTMLInputElement } | null>(null)
 
 const allSelected = computed(
   () => auth.books.length > 0 && shareSelected.value.length === auth.books.length,
@@ -88,7 +88,7 @@ const someSelected = computed(
 function openShare(): void {
   // 每次打开都按「当前账本」重置，避免上次的勾选残留
   shareSelected.value = currentBookId.value ? [currentBookId.value] : []
-  shareResults.value = []
+  shareResult.value = null
   shareVisible.value = true
 }
 
@@ -96,28 +96,16 @@ function toggleSelectAll(value: boolean | string | number): void {
   shareSelected.value = value ? auth.books.map((b) => b.id) : []
 }
 
-function linkOf(share: BookShare): string {
-  return `${window.location.origin}/report/${share.token}`
+function shareLinkUrl(): string {
+  return shareResult.value ? `${window.location.origin}/report/${shareResult.value.token}` : ''
 }
 
-/** 记下每行输入框的实例，局域网 http 下复制要选中它 */
-function setShareRef(bookId: number, el: unknown): void {
-  shareInputRefs.value[bookId] = (el as { input?: HTMLInputElement } | null) ?? null
-}
-
-/** 一次给勾选的账本出链接：已有未过期链接的会复用（不会顶掉已经发到班群的旧链接） */
+/** 生成一条链接，包含勾选的全部账本；**每次都会换新 token，旧链接立即失效** */
 async function onGenerateShare(): Promise<void> {
   if (!shareSelected.value.length || shareLoading.value) return
   shareLoading.value = true
   try {
-    shareResults.value = await shareBooks(shareSelected.value)
-    // 顺手把 books 里的 shareToken 补齐，顶栏/账本页的「已分享」状态才是最新的
-    for (const item of shareResults.value) {
-      const book = auth.books.find((b) => b.id === item.bookId)
-      if (book) {
-        auth.applyBook({ ...book, shareToken: item.token, shareTokenExpiresAt: item.expiresAt })
-      }
-    }
+    shareResult.value = await shareBooks(shareSelected.value)
   } catch {
     // request.ts 已按响应码弹过提示
   } finally {
@@ -125,8 +113,9 @@ async function onGenerateShare(): Promise<void> {
   }
 }
 
-async function copyShareLink(share: BookShare): Promise<void> {
-  const text = linkOf(share)
+async function copyShareLink(): Promise<void> {
+  const text = shareLinkUrl()
+  if (!text) return
 
   // 1) 安全上下文（https / localhost）直接用标准 API
   if (window.isSecureContext && navigator.clipboard) {
@@ -139,10 +128,10 @@ async function copyShareLink(share: BookShare): Promise<void> {
     }
   }
 
-  // 2) 局域网 http：没有 clipboard API，只能选中**那一行真实可见的输入框**再 execCommand。
+  // 2) 局域网 http：没有 clipboard API，只能选中**弹窗里那个真实可见的输入框**再 execCommand。
   //    不能用隐藏的 textarea：安卓/iOS 对不可见元素、以及 contentEditable 的选区行为不一致，
   //    会出现「提示复制成功，粘出来却是别的内容 / 打不开」的问题。
-  const input = shareInputRefs.value[share.bookId]?.input
+  const input = shareInputRef.value?.input
   if (input) {
     input.focus()
     input.select()
@@ -366,7 +355,7 @@ onMounted(async () => {
       @category-created="onCategoryCreated"
     />
 
-    <el-dialog v-model="shareVisible" title="分享账本（生成公示链接）" width="min(560px, 94vw)">
+    <el-dialog v-model="shareVisible" title="分享账本（生成一条公示链接）" width="min(560px, 94vw)">
       <div class="share-toolbar">
         <el-checkbox
           :model-value="allSelected"
@@ -387,28 +376,29 @@ onMounted(async () => {
       </el-checkbox-group>
 
       <p class="share-tip">
-        每本账本一条链接，<strong>3 天有效</strong>；已经发出去且还没过期的链接会被直接复用，
-        不会因为这次操作把旧链接顶掉。
+        选中的账本会**放在同一条链接**里，点开就能切换查看，<strong>3 天有效</strong>。
+        每次生成都会换新链接，之前发出去的那条随即失效。
       </p>
 
-      <div v-if="shareResults.length" class="share-results">
-        <div v-for="r in shareResults" :key="r.bookId" class="share-result">
-          <div class="share-result-head">
-            <span class="share-result-name">{{ r.bookName }}</span>
-            <el-tag v-if="r.reused" size="small" type="info">沿用旧链接</el-tag>
-            <span class="share-result-exp">到期 {{ r.expiresAt }}</span>
-          </div>
-          <el-input
-            :ref="(el: unknown) => setShareRef(r.bookId, el)"
-            :model-value="linkOf(r)"
-            readonly
-            @focus="($event.target as HTMLInputElement).select()"
-          >
-            <template #append>
-              <el-button @click="copyShareLink(r)">复制</el-button>
-            </template>
-          </el-input>
+      <div v-if="shareResult" class="share-result">
+        <div class="share-result-head">
+          <span class="share-result-name">
+            含 {{ shareResult.books.length }} 本：{{
+              shareResult.books.map((b) => b.name).join('、')
+            }}
+          </span>
+          <span class="share-result-exp">到期 {{ shareResult.expiresAt }}</span>
         </div>
+        <el-input
+          ref="shareInputRef"
+          :model-value="shareLinkUrl()"
+          readonly
+          @focus="($event.target as HTMLInputElement).select()"
+        >
+          <template #append>
+            <el-button @click="copyShareLink">复制</el-button>
+          </template>
+        </el-input>
       </div>
 
       <template #footer>
@@ -419,7 +409,7 @@ onMounted(async () => {
           :disabled="!shareSelected.length"
           @click="onGenerateShare"
         >
-          生成链接
+          {{ shareResult ? '重新生成链接' : '生成链接' }}
         </el-button>
       </template>
     </el-dialog>
@@ -650,11 +640,6 @@ onMounted(async () => {
 .share-tag.archived {
   color: var(--el-text-color-secondary);
   background: var(--el-fill-color);
-}
-
-.share-results {
-  display: grid;
-  gap: 10px;
 }
 
 .share-result-head {

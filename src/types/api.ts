@@ -45,10 +45,6 @@ export interface Book {
   id: number
   name: string
   type: BookType
-  /** 当前公示链接的 token；从未分享过为 null。链接 3 天有效，点「分享」会重新生成 */
-  shareToken: string | null
-  /** 链接到期时间（yyyy-MM-dd HH:mm:ss）；null 或已过期表示没有可用链接 */
-  shareTokenExpiresAt: string | null
   /**
    * 当前分类来自哪套自定义模板；**null = 内置「班级班费」模板**（后端 id=0，不入库）。
    * 语义是「基于哪套模板」，用户手工增删改分类后不会清空。
@@ -92,15 +88,16 @@ export interface ShareLink {
   expiresAt: string
 }
 
-/** POST /api/books/share 的一行：批量分享时每本账本一条链接 */
-export interface BookShare {
-  bookId: number
-  bookName: string
+/**
+ * POST /api/books/share 的响应：**一条链接** + 它包含的账本。
+ * 每次分享都换新 token，旧链接立即失效。
+ */
+export interface ShareLinkCreated {
   token: string
-  /** yyyy-MM-dd HH:mm:ss */
+  /** yyyy-MM-dd HH:mm:ss，分享时刻 + 3 天 */
   expiresAt: string
-  /** true = 复用了已有的未过期链接；false = 本次新生成 */
-  reused: boolean
+  /** 这条链接能看到的账本（按勾选顺序） */
+  books: { id: number; name: string }[]
 }
 
 /** POST /api/auth/forgot-password —— 只填邮箱（邮箱是登录凭据且唯一）；返回永远成功 */
@@ -285,8 +282,9 @@ export interface ReportTransaction {
   balanceAfter: string
 }
 
-/** 免登录公示页 GET /api/public/report/{shareToken}，不含任何个人信息 */
-export interface PublicReport {
+/** 单本账本在公示页上的内容（一条链接可以带多本，所以是数组里的一项） */
+export interface PublicBookReport {
+  bookId: number
   bookName: string
   /** yyyy-MM */
   month: string
@@ -300,4 +298,14 @@ export interface PublicReport {
   incomeCategories: CategoryStat[]
   /** 按日期升序，逐行结余从上往下读 */
   transactions: ReportTransaction[]
+}
+
+/**
+ * 免登录公示页 GET /api/public/report/{shareToken}，不含任何个人信息。
+ * **一条链接可以带多本账本**：`books` 里每本一套数字，前端用标签页切换。
+ */
+export interface PublicReport {
+  /** 链接到期时间 yyyy-MM-dd HH:mm:ss */
+  expiresAt: string
+  books: PublicBookReport[]
 }

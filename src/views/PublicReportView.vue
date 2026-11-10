@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchPublicReport } from '../api/public'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
-import type { PublicReport } from '../types/api'
+import type { PublicBookReport, PublicReport } from '../types/api'
 import { colorOf, iconOf } from '../utils/category'
 
 /**
@@ -19,9 +19,17 @@ const report = ref<PublicReport | null>(null)
 const loading = ref(false)
 const failed = ref(false)
 const month = ref('')
+/** 当前查看的账本：一条链接可以带多本，用标签页切换 */
+const activeBookId = ref<number | null>(null)
 
-const incomeCategories = computed(() => report.value?.incomeCategories ?? [])
-const expenseCategories = computed(() => report.value?.expenseCategories ?? [])
+const books = computed(() => report.value?.books ?? [])
+const current = computed<PublicBookReport | null>(() => {
+  if (!books.value.length) return null
+  return books.value.find((b) => b.bookId === activeBookId.value) ?? books.value[0]
+})
+
+const incomeCategories = computed(() => current.value?.incomeCategories ?? [])
+const expenseCategories = computed(() => current.value?.expenseCategories ?? [])
 
 async function load(): Promise<void> {
   if (!token.value) {
@@ -34,7 +42,11 @@ async function load(): Promise<void> {
     const resp = await fetchPublicReport(token.value, month.value || undefined)
     report.value = resp
     // 回显后端实际统计的月份（不传时是当月）
-    month.value = resp.month
+    month.value = resp.books[0]?.month ?? ''
+    // 保持当前选中的账本；它不在这次结果里（比如被彻底删了）就回到第一本
+    if (!resp.books.some((b) => b.bookId === activeBookId.value)) {
+      activeBookId.value = resp.books[0]?.bookId ?? null
+    }
   } catch {
     // token 不存在/账本已注销 → 后端 code=404，拦截器已弹提示，这里只切到错误态
     failed.value = true
@@ -44,9 +56,10 @@ async function load(): Promise<void> {
   }
 }
 
-// 同一个人可能改地址栏里的 token 直接换一本账看
+// 同一个人可能改地址栏里的 token 直接换一条链接看
 watch(token, () => {
   month.value = ''
+  activeBookId.value = null
   void load()
 })
 
@@ -56,7 +69,7 @@ onMounted(load)
 <template>
   <div class="page">
     <header class="header">
-      <h1 class="title">{{ report?.bookName ?? '班级账本' }}</h1>
+      <h1 class="title">{{ current?.bookName ?? '班级账本' }}</h1>
       <span class="badge">只读公示</span>
     </header>
 
@@ -64,9 +77,19 @@ onMounted(load)
     </el-result>
 
     <template v-else>
+      <!-- 一条链接带多本账本：用标签页切换，单本时不显示 -->
+      <el-tabs
+        v-if="books.length > 1"
+        v-model="activeBookId"
+        class="book-tabs"
+        type="border-card"
+      >
+        <el-tab-pane v-for="b in books" :key="b.bookId" :label="b.bookName" :name="b.bookId" />
+      </el-tabs>
+
       <section v-loading="loading" class="card">
         <div class="card-head">
-          <span class="month-label">{{ report?.month ?? '' }} 收支</span>
+          <span class="month-label">{{ current?.month ?? '' }} 收支</span>
           <el-date-picker
             v-model="month"
             class="month-picker"
@@ -81,23 +104,22 @@ onMounted(load)
         <div class="numbers">
           <div class="number">
             <span class="label">收入</span>
-            <span class="value income">+￥{{ report?.income ?? '0.00' }}</span>
+            <span class="value income">+￥{{ current?.income ?? '0.00' }}</span>
           </div>
           <div class="number">
             <span class="label">支出</span>
-            <span class="value expense">-￥{{ report?.expense ?? '0.00' }}</span>
+            <span class="value expense">-￥{{ current?.expense ?? '0.00' }}</span>
           </div>
           <div class="number">
             <span class="label">本月结余</span>
-            <span class="value">￥{{ report?.balance ?? '0.00' }}</span>
+            <span class="value">￥{{ current?.balance ?? '0.00' }}</span>
           </div>
           <div class="number">
             <span class="label">累计结余</span>
-            <span class="value strong">￥{{ report?.totalBalance ?? '0.00' }}</span>
+            <span class="value strong">￥{{ current?.totalBalance ?? '0.00' }}</span>
           </div>
         </div>
-
-        </section>
+      </section>
 
       <div class="charts-row">
         <CategoryChartCard
@@ -117,10 +139,10 @@ onMounted(load)
       <section v-loading="loading" class="card">
         <h2 class="card-title">明细（按日期升序，结余为逐行累计）</h2>
 
-        <p v-if="!loading && !report?.transactions.length" class="empty">本月还没有流水</p>
+        <p v-if="!loading && !current?.transactions.length" class="empty">本月还没有流水</p>
 
         <ul class="tx-list">
-          <li v-for="(tx, index) in report?.transactions" :key="index" class="tx-item">
+          <li v-for="(tx, index) in current?.transactions" :key="index" class="tx-item">
             <span class="tx-icon" :style="{ background: colorOf(tx.categoryColor) + '22' }">
               {{ iconOf(tx.categoryIcon) }}
             </span>
@@ -142,6 +164,7 @@ onMounted(load)
 
       <footer class="footer">
         本页为只读公示，数据来自班级账本，不含任何个人信息。如需更正请联系生活委员。
+        <template v-if="report?.expiresAt">（本链接有效期至 {{ report.expiresAt }}）</template>
       </footer>
     </template>
   </div>
@@ -152,6 +175,10 @@ onMounted(load)
   max-width: 720px;
   margin: 0 auto;
   padding: 16px;
+}
+
+.book-tabs {
+  margin-bottom: 12px;
 }
 
 .header {
