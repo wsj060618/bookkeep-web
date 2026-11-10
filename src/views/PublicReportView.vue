@@ -77,19 +77,21 @@ onMounted(load)
     </el-result>
 
     <template v-else>
-      <!-- 一条链接带多本账本：用标签页切换，单本时不显示 -->
-      <el-tabs
-        v-if="books.length > 1"
-        v-model="activeBookId"
-        class="book-tabs"
-        type="border-card"
-      >
-        <el-tab-pane v-for="b in books" :key="b.bookId" :label="b.bookName" :name="b.bookId" />
-      </el-tabs>
-
       <section v-loading="loading" class="card">
         <div class="card-head">
-          <span class="month-label">{{ current?.month ?? '' }} 收支</span>
+          <!-- 一条链接带多本账本：切换直接放在收支卡片里，不留空标签内容区 -->
+          <el-radio-group
+            v-if="books.length > 1"
+            v-model="activeBookId"
+            size="small"
+            class="book-switch"
+          >
+            <el-radio-button v-for="b in books" :key="b.bookId" :value="b.bookId">
+              {{ b.bookName }}
+            </el-radio-button>
+          </el-radio-group>
+          <span v-else class="month-label">{{ current?.month ?? '' }} 收支</span>
+
           <el-date-picker
             v-model="month"
             class="month-picker"
@@ -177,10 +179,6 @@ onMounted(load)
   padding: 16px;
 }
 
-.book-tabs {
-  margin-bottom: 12px;
-}
-
 .header {
   display: flex;
   align-items: center;
@@ -212,9 +210,17 @@ onMounted(load)
 
 .card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 12px;
+}
+
+/* 多本账本时的切换：胶囊按钮，放不下就换行，不额外占一块空白区 */
+.book-switch {
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 .month-label {
