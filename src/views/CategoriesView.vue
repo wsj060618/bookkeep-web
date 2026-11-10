@@ -11,6 +11,7 @@ import {
 } from '../api/template'
 import CategoryFormDialog from '../components/CategoryFormDialog.vue'
 import TemplateFormDialog from '../components/TemplateFormDialog.vue'
+import { useShell } from '../composables/shell'
 import { useAuthStore } from '../stores/auth'
 import { colorOf, iconOf } from '../utils/category'
 import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
@@ -29,6 +30,12 @@ import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
  */
 
 const auth = useAuthStore()
+/**
+ * 「记一笔」弹窗挂在 AppLayout 上，用的是 layout 里那份分类缓存。
+ * 模板保存会改账本分类，所以这里必须让它重拉一次，否则弹窗下拉还是旧的
+ * （表现就是「模板加了分类，记一笔里看不到」）。
+ */
+const shell = useShell()
 
 const GROUPS: { type: TxType; title: string; short: string }[] = [
   { type: 'expense', title: '支出分类', short: '支出' },
@@ -110,6 +117,8 @@ async function persist(next: TemplateItemInput[], success: string): Promise<bool
   try {
     await updateTemplate(template.id, template.name, next)
     await loadTemplates()
+    // 账本分类已经跟着变了 → 让「记一笔」/流水筛选那份缓存重拉
+    await shell.reloadCategories()
     ElMessage.success(success)
     return true
   } catch {

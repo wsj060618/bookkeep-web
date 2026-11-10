@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { ref } from 'vue'
 import ElementPlus from 'element-plus'
 import CategoriesView from '../CategoriesView.vue'
+import { SHELL_KEY } from '../../composables/shell'
 import type { CategoryTemplate } from '../../types/api'
 
 /**
@@ -16,6 +18,8 @@ const listTemplates = vi.fn()
 const listBooks = vi.fn()
 const updateTemplate = vi.fn()
 const createTemplate = vi.fn()
+/** layout 那份分类缓存的重拉入口：保存模板后必须被调用，否则「记一笔」下拉是旧的 */
+const reloadCategories = vi.fn()
 
 vi.mock('../../api/template', () => ({
   listTemplates: (...args: unknown[]) => listTemplates(...args),
@@ -78,7 +82,22 @@ async function mountPage(templates: CategoryTemplate[], bookTemplateId: number |
       archived: false,
     },
   ])
-  const wrapper = mount(CategoriesView, { global: { plugins: [ElementPlus] } })
+  const wrapper = mount(CategoriesView, {
+    global: {
+      plugins: [ElementPlus],
+      // 页面在 AppLayout 里跑，分类缓存由 layout 提供
+      provide: {
+        [SHELL_KEY as symbol]: {
+          categories: ref([]),
+          txVersion: ref(0),
+          openCreate: vi.fn(),
+          openEdit: vi.fn(),
+          notifyTxChanged: vi.fn(),
+          reloadCategories,
+        },
+      },
+    },
+  })
   await flushPromises()
   return { wrapper, vm: wrapper.vm as unknown as Vm }
 }
@@ -90,6 +109,8 @@ describe('CategoriesView（模板页 · 实时保存）', () => {
     listBooks.mockReset()
     updateTemplate.mockReset()
     createTemplate.mockReset()
+    reloadCategories.mockReset()
+    reloadCategories.mockResolvedValue(undefined)
   })
 
   it('打开就把所选模板的条目对齐到本地，并带上条目 id', async () => {
@@ -136,6 +157,8 @@ describe('CategoriesView（模板页 · 实时保存）', () => {
     expect(name).toBe('我的模板')
     expect(sent.map((i) => i.name)).toEqual(['吃饭', '工资', '打印费'])
     expect(sent.map((i) => i.id)).toEqual([11, 12, undefined])
+    // 账本分类变了 → 必须让 layout 重拉，「记一笔」下拉才不会还是旧的
+    expect(reloadCategories).toHaveBeenCalled()
   })
 
   it('改名 → 立刻 PUT，并保留该条的 id（否则后端会当成删旧建新）', async () => {
