@@ -106,7 +106,7 @@ async function onSubmit(): Promise<void> {
       <p class="login-hint">
         还没有账号？
         <router-link :to="{ name: 'register' }">注册一个</router-link>
-        （注册后自动建好班级账本）
+        （注册后自动建好第一本账本）
       </p>
       <p class="login-hint">
         <router-link :to="{ name: 'forgot-password' }">忘记密码？</router-link>

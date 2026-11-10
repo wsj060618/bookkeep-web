@@ -8,7 +8,7 @@ import { emailFormatRule, passwordRule } from '../utils/validate'
 
 /**
  * 注册向导：第一步账号，第二步给账本起名，最后一次性提交。
- * 为什么不在「注册成功」之后再命名账本：后端 register 是一个事务（账号 + 账本 + 13 条分类）一次建完，
+ * 为什么不在「注册成功」之后再命名账本：后端 register 是一个事务（账号 + 账本 + 分类）一次建完，
  * 也没有改账本名的接口，所以「定义账本」只能发生在提交之前——顺序上是「填账号 → 定义账本 → 进首页」。
  * 后端 register 只返回用户信息、**不发 token**，成功后这里自动登录一次，省用户再输密码。
  */
@@ -124,8 +124,8 @@ async function onSubmit(): Promise<void> {
   <div class="register-page">
     <el-card class="register-card">
       <template #header>
-        <h1 class="register-title">创建班级账本</h1>
-        <p class="register-subtitle">先创建账号，再给这本账起个名字，然后就能记班费了</p>
+        <h1 class="register-title">创建账本</h1>
+        <p class="register-subtitle">先创建账号，再给账本起个名字</p>
       </template>
 
       <el-steps :active="step" simple class="steps">
@@ -189,7 +189,7 @@ async function onSubmit(): Promise<void> {
               v-model="form.bookName"
               maxlength="50"
               show-word-limit
-              placeholder="比如：计科2301班费"
+              placeholder="比如：2026 秋季账本"
               @keyup.enter="onSubmit"
             />
           </el-form-item>
@@ -198,8 +198,8 @@ async function onSubmit(): Promise<void> {
             type="info"
             :closable="false"
             show-icon
-            title="会一并预置 13 个常用分类（8 个支出 + 5 个收入）"
-            description="账本名就是分享给同学看的公示页标题，建议写清班级。"
+            title="会一并预置 11 个常用分类（7 个支出 + 4 个收入）"
+            description="账本名会显示在公示页的标题上。"
           />
 
           <div class="register-actions">
