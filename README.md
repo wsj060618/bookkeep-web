@@ -20,7 +20,16 @@ bookkeep 的前端：Vue 3 + TypeScript + Vite + Element Plus。
 
 ## 技术栈
 
-Vue 3.5（`<script setup>` + TS）、Vite 8、Element Plus 2、Pinia、vue-router 4、axios、ECharts（按需异步加载）、Vitest。
+![Vue 3](https://img.shields.io/badge/Vue-3-42B883?logo=vuedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
+![Element Plus](https://img.shields.io/badge/Element_Plus-2-409EFF)
+![Pinia](https://img.shields.io/badge/Pinia-4-FFD859)
+![vue-router](https://img.shields.io/badge/vue--router-4-209A55)
+![Axios](https://img.shields.io/badge/Axios-1-5A29E4?logo=axios&logoColor=white)
+![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
+![Vitest](https://img.shields.io/badge/Vitest-5-6E9F18?logo=vitest&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
 ## 项目结构
 
@@ -103,3 +112,7 @@ npm run preview    # 本地预览 dist
 - Element Plus 全量引入，首屏 JS ≈1MB（gzip 330KB）；演示阶段不为按需加载增加配置
 - token 存 localStorage：能扛刷新，但 XSS 可窃取；要更稳得换 httpOnly Cookie
 - 局域网 http 不是安全上下文，`navigator.clipboard` 不可用，分享弹窗的复制会退回 `execCommand('copy')`
+
+## License
+
+MIT © 2026 wsj — 见 [LICENSE](LICENSE)。
