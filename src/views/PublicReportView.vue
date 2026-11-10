@@ -185,20 +185,33 @@ onMounted(load)
               </div>
               <div class="tx-line">
                 <span class="tx-note">{{ tx.note || '—' }}</span>
-                <span class="tx-date">{{ tx.transDate }} · 结余 ￥{{ tx.balanceAfter }}</span>
-              </div>
-              <!-- 票据：只读，直接给匿名图片地址，点开新标签看原图 -->
-              <div v-if="tx.receiptCount > 0" class="tx-receipts">
-                <span class="tx-receipts-label">票据：</span>
-                <template v-for="(receipt, i) in tx.receipts" :key="receipt.id">
-                  <span v-if="i > 0" class="tx-receipts-sep">、</span>
-                  <a
-                    class="tx-receipts-link"
-                    :href="publicReceiptUrl(token, receipt.id)"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >{{ receipt.title }}</a>
-                </template>
+                <span class="tx-tail">
+                  <!-- 票据徽标：和管理端一样，点开列出票据链接（有 10 张也不会撑开行高） -->
+                  <el-popover
+                    v-if="tx.receiptCount > 0"
+                    placement="top"
+                    trigger="click"
+                    :width="200"
+                    popper-class="receipt-pop"
+                  >
+                    <template #reference>
+                      <button type="button" class="tx-receipt" :title="`${tx.receiptCount} 张票据`">
+                        📎 {{ tx.receiptCount }}
+                      </button>
+                    </template>
+                    <div class="receipt-links">
+                      <a
+                        v-for="receipt in tx.receipts"
+                        :key="receipt.id"
+                        class="receipt-link"
+                        :href="publicReceiptUrl(token, receipt.id)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >{{ receipt.title }}</a>
+                    </div>
+                  </el-popover>
+                  <span class="tx-date">{{ tx.transDate }} · 结余 ￥{{ tx.balanceAfter }}</span>
+                </span>
               </div>
             </div>
           </li>
@@ -416,31 +429,47 @@ onMounted(load)
   white-space: nowrap;
 }
 
-/* 票据：文字链接列表 */
-.tx-receipts {
+/* 票据徽标：和管理端同一个样式 */
+.tx-tail {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tx-receipt {
+  border: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-regular);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.tx-receipt:hover {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+/* 弹层里的票据链接（popper 挂在 body 上，样式不能 scoped） */
+:global(.receipt-links) {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0;
-  margin-top: 4px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:global(.receipt-link) {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.tx-receipts-label {
-  color: var(--el-text-color-secondary);
-}
-
-.tx-receipts-sep {
-  color: var(--el-text-color-placeholder);
-}
-
-.tx-receipts-link {
   color: var(--el-color-primary);
   text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.tx-receipts-link:hover {
+:global(.receipt-link:hover) {
   text-decoration: underline;
 }
 
@@ -462,6 +491,16 @@ onMounted(load)
 @media (max-width: 520px) {
   .numbers {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 极窄屏：备注独占一行，避免日期/徽标被挤掉 */
+  .tx-line {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .tx-note {
+    flex: 1 1 100%;
   }
 }
 </style>
