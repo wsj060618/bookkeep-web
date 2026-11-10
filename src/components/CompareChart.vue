@@ -1,0 +1,148 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import * as echarts from 'echarts/core'
+import type { ECharts, EChartsCoreOption } from 'echarts/core'
+import { BarChart, PieChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+/**
+ * 「收支对比」图：柱状图（收入 / 支出 / 结余）与环形图（收支占比）。
+ * <p>和分类占比图分开写：分类图的颜色取分类语义色、维度是「分类」；
+ * 这张图固定三段（收入/支出/结余），颜色固定为蓝/绿/灰，和导出的 Excel 一致。
+ */
+
+echarts.use([BarChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
+
+const props = defineProps<{
+  type: 'bar' | 'donut'
+  income: string
+  expense: string
+  balance: string
+}>()
+
+const INCOME_COLOR = '#5b9bd5'
+const EXPENSE_COLOR = '#70ad47'
+const BALANCE_COLOR = '#7f7f7f'
+
+const el = ref<HTMLDivElement | null>(null)
+let chart: ECharts | null = null
+let observer: ResizeObserver | null = null
+
+function money(value: string): string {
+  return `￥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** 结余可能是负数：柱状图的负数柱会朝下，tooltip 也照实显示 */
+const items = computed(() => [
+  { name: '收入', value: Number(props.income), color: INCOME_COLOR },
+  { name: '支出', value: Number(props.expense), color: EXPENSE_COLOR },
+  { name: '结余', value: Number(props.balance), color: BALANCE_COLOR },
+])
+
+function buildOption(): EChartsCoreOption {
+  if (props.type === 'donut') {
+    return {
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: unknown) => {
+          const p = params as { name: string; value: number; percent: number; marker: string }
+          return `${p.marker} ${p.name}<br/>${money(String(p.value))}（${p.percent}%）`
+        },
+      },
+      legend: { bottom: 0, icon: 'circle', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 12 } },
+      series: [
+        {
+          type: 'pie',
+          // 只比收入和支出：结余是差额，放进占比会重复计算
+          radius: ['46%', '70%'],
+          center: ['50%', '44%'],
+          itemStyle: { borderColor: '#fff', borderWidth: 2 },
+          label: { show: true, formatter: '{b}\n{d}%', fontSize: 12, lineHeight: 17 },
+          labelLayout: { hideOverlap: true },
+          data: items.value
+            .filter((item) => item.name !== '结余')
+            .map((item) => ({
+              name: item.name,
+              value: Math.abs(item.value),
+              itemStyle: { color: item.color },
+            })),
+        },
+      ],
+    }
+  }
+
+  return {
+    grid: { left: 8, right: 16, top: 28, bottom: 8, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: (params: unknown) => {
+        const list = params as { name: string; value: number }[]
+        return list.length ? `${list[0].name}<br/>${money(String(list[0].value))}` : ''
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: items.value.map((item) => item.name),
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: '#e4e7ed' } },
+      axisLabel: { fontSize: 12, color: '#606266' },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { fontSize: 11, color: '#909399' },
+      splitLine: { lineStyle: { color: '#f2f3f5' } },
+    },
+    series: [
+      {
+        type: 'bar',
+        barMaxWidth: 42,
+        data: items.value.map((item) => ({
+          value: item.value,
+          itemStyle: { color: item.color, borderRadius: [6, 6, 0, 0] },
+        })),
+        label: {
+          show: true,
+          position: 'top',
+          fontSize: 11,
+          color: '#606266',
+          formatter: (params: unknown) => money(String((params as { value: number }).value)),
+        },
+      },
+    ],
+  }
+}
+
+function render(): void {
+  if (!el.value) return
+  if (!chart) chart = echarts.init(el.value)
+  chart.setOption(buildOption(), true)
+  chart.resize()
+}
+
+onMounted(() => {
+  render()
+  observer = new ResizeObserver(() => chart?.resize())
+  if (el.value) observer.observe(el.value)
+})
+
+watch(() => [props.income, props.expense, props.balance, props.type], render)
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  chart?.dispose()
+  chart = null
+})
+</script>
+
+<template>
+  <div ref="el" class="compare-chart" />
+</template>
+
+<style scoped>
+.compare-chart {
+  width: 100%;
+  height: 260px;
+}
+</style>

@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
 import { useShell } from '../composables/shell'
 import type { CategoryStat, Summary, TxType } from '../types/api'
 
+/** 收支对比图按需加载（ECharts 只在真要画图时才拉） */
+const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
+
 /**
  * 统计页：按月看收支与分类占比。
- * 占比拆成**收入、支出两张卡片并排**（收入在左、支出在右），
+ * 顶部是「收支对比」（柱状：收入/支出/结余 + 环形：收支占比），
+ * 下面占比拆成**收入、支出两张卡片并排**（收入在左、支出在右），
  * **每张卡自己带柱状图 / 饼图 / 环形图切换**，互不影响。
  * 改过流水（txVersion 变化）后要重拉，否则从流水页回来数字是旧的。
  */
@@ -84,6 +88,34 @@ onMounted(() => {
       <div class="num">
         <span class="num-label">累计结余</span>
         <span class="num-value strong">￥{{ summary?.totalBalance ?? '0.00' }}</span>
+      </div>
+    </section>
+
+    <section v-loading="loading" class="panel">
+      <div class="panel-head">
+        <h3 class="panel-title">收支对比</h3>
+        <span class="panel-month">{{ summary?.month ?? '' }}</span>
+      </div>
+
+      <div class="charts-row">
+        <div class="compare-card">
+          <header class="compare-head">金额对比（柱状）</header>
+          <CompareChart
+            type="bar"
+            :income="summary?.income ?? '0.00'"
+            :expense="summary?.expense ?? '0.00'"
+            :balance="summary?.balance ?? '0.00'"
+          />
+        </div>
+        <div class="compare-card">
+          <header class="compare-head">收支占比（环形）</header>
+          <CompareChart
+            type="donut"
+            :income="summary?.income ?? '0.00'"
+            :expense="summary?.expense ?? '0.00'"
+            :balance="summary?.balance ?? '0.00'"
+          />
+        </div>
       </div>
     </section>
 
@@ -196,6 +228,20 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+
+.compare-card {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+}
+
+.compare-head {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
 }
 
 @media (max-width: 900px) {
