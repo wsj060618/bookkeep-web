@@ -6,10 +6,10 @@ import CategoriesView from '../CategoriesView.vue'
 import type { CategoryTemplate } from '../../types/api'
 
 /**
- * 分类模板页的回归测试：**「没改也提示有改动」与「切换模板没切换」这两个 bug 的看门人**。
+ * 分类模板页的回归测试：**实时保存**（没有草稿、没有「保存模板」按钮）。
  *
- * <p>不点 DOM，直接看组件状态：草稿是否跟着选中模板、dirty 是否为 false、
- * 选择另一套模板后内容有没有真的换。
+ * <p>每条都盯住一个曾经踩过的坑：术语残留（draft/dirty）、切换模板时列表串台、
+ * 条目 id 丢失（改名退化成删旧建新）、保存失败后界面和后端不一致。
  */
 
 const listTemplates = vi.fn()
@@ -50,27 +50,40 @@ const mine: CategoryTemplate = {
   ],
 }
 
+interface DraftLike {
+  id?: number | null
+  name: string
+  type: string
+}
+
 interface Vm {
-  dirty: boolean
   templateId: number
-  draftItems: { id?: number | null; name: string; type: string }[]
-  onTemplateChange: (next: number) => Promise<void>
-  onSave: () => Promise<void>
-  onItemSubmit: (payload: { name: string; type: string; icon: string; color: string }) => void
+  items: DraftLike[]
+  onTemplateChange: (next: number) => void
+  onItemSubmit: (payload: { name: string; type: string; icon: string; color: string }) => Promise<void>
+  onDelete: (item: DraftLike) => Promise<void>
+  openEdit: (item: DraftLike) => Promise<void>
   ensureEditableTemplate: () => Promise<boolean>
 }
 
 async function mountPage(templates: CategoryTemplate[], bookTemplateId: number | null = null) {
   listTemplates.mockResolvedValue(templates)
   listBooks.mockResolvedValue([
-    { id: 1, name: '班级账本', type: 'class', categoryTemplateId: bookTemplateId, current: true },
+    {
+      id: 1,
+      name: '班级账本',
+      type: 'class',
+      categoryTemplateId: bookTemplateId,
+      current: true,
+      archived: false,
+    },
   ])
   const wrapper = mount(CategoriesView, { global: { plugins: [ElementPlus] } })
   await flushPromises()
   return { wrapper, vm: wrapper.vm as unknown as Vm }
 }
 
-describe('CategoriesView（模板页）', () => {
+describe('CategoriesView（模板页 · 实时保存）', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     listTemplates.mockReset()
@@ -79,114 +92,93 @@ describe('CategoriesView（模板页）', () => {
     createTemplate.mockReset()
   })
 
-  it('刚打开、什么都没改 → dirty 必须是 false', async () => {
-    const { vm } = await mountPage([builtin])
-    expect(vm.templateId).toBe(0)
-    expect(vm.draftItems).toHaveLength(3)
-    expect(vm.dirty).toBe(false)
+  it('打开就把所选模板的条目对齐到本地，并带上条目 id', async () => {
+    const { vm } = await mountPage([mine])
+    expect(vm.templateId).toBe(7)
+    expect(vm.items.map((i) => i.name)).toEqual(['吃饭', '工资'])
+    expect(vm.items.map((i) => i.id)).toEqual([11, 12])
   })
 
   it('老账本 categoryTemplateId 为 NULL → 回落到列表第一套，绝不停在 id=0', async () => {
     // 这条是「下拉显示裸 0」的看门人：模板列表里没有 id=0，选中值就绝不能是 0
     const { vm } = await mountPage([mine], null)
     expect(vm.templateId).toBe(7)
-    expect(vm.draftItems.map((i) => i.name)).toEqual(['吃饭', '工资'])
-    expect(vm.dirty).toBe(false)
+    expect(vm.items.map((i) => i.name)).toEqual(['吃饭', '工资'])
   })
 
   it('账本指向的模板已被删掉 → 也回落到第一套', async () => {
     const { vm } = await mountPage([mine], 999)
     expect(vm.templateId).toBe(7)
-    expect(vm.dirty).toBe(false)
+    expect(vm.items).toHaveLength(2)
   })
 
-  it('切到另一套模板 → 草稿跟着换，且仍然 dirty=false', async () => {
+  it('切到另一套模板 → 列表跟着换，不会串台', async () => {
     const { vm } = await mountPage([builtin, mine])
-
-    await vm.onTemplateChange(7)
-    await flushPromises()
-
-    expect(vm.templateId).toBe(7)
-    expect(vm.draftItems.map((i) => i.name)).toEqual(['吃饭', '工资'])
-    expect(vm.dirty).toBe(false)
-  })
-
-  it('切回来也一致（不会因为顺序/字段差异误判）', async () => {
-    const { vm } = await mountPage([builtin, mine], 7)
-    expect(vm.dirty).toBe(false)
-
-    await vm.onTemplateChange(0)
-    await flushPromises()
-    expect(vm.draftItems.map((i) => i.name)).toEqual(['班会物资', '聚餐', '收取班费'])
-    expect(vm.dirty).toBe(false)
-  })
-
-  it('模板列表刷新（同 id 新对象）后 dirty 仍是 false', async () => {
-    const { vm } = await mountPage([builtin])
-    listTemplates.mockResolvedValue([{ ...builtin, items: [...builtin.items] }])
-    // 触发一次 loadTemplates：等价于页面里别处刷新模板列表
-    await (vm as unknown as { loadTemplates: () => Promise<void> }).loadTemplates()
-    await flushPromises()
-    expect(vm.dirty).toBe(false)
-  })
-
-  it('有未保存改动时选「继续编辑」→ 真的不切换', async () => {
-    const { ElMessageBox } = await import('element-plus')
-    vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
-    const { vm } = await mountPage([builtin, mine])
-
-    // 制造一个改动
-    vm.draftItems[0].name = '班会物资（改）'
-    expect(vm.dirty).toBe(true)
-
-    await vm.onTemplateChange(7)
-    await flushPromises()
-
     expect(vm.templateId).toBe(0)
-    expect(vm.draftItems[0].name).toBe('班会物资（改）')
-  })
 
-  it('有未保存改动时选「放弃并切换」→ 切换并丢弃改动', async () => {
-    const { ElMessageBox } = await import('element-plus')
-    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
-    const { vm } = await mountPage([builtin, mine])
-
-    vm.draftItems[0].name = '班会物资（改）'
-    await vm.onTemplateChange(7)
+    vm.onTemplateChange(7)
     await flushPromises()
 
     expect(vm.templateId).toBe(7)
-    expect(vm.draftItems.map((i) => i.name)).toEqual(['吃饭', '工资'])
-    expect(vm.dirty).toBe(false)
+    expect(vm.items.map((i) => i.name)).toEqual(['吃饭', '工资'])
   })
 
-  it('草稿带着条目 id，保存时原样回传（后端靠它判断「改名」而不是「删旧建新」）', async () => {
-    updateTemplate.mockResolvedValue({ ...mine, items: [...mine.items] })
+  it('新增一条 → 立刻 PUT：老条目带 id，新条目不带 id', async () => {
+    updateTemplate.mockResolvedValue({ ...mine })
     const { vm } = await mountPage([mine])
 
-    expect(vm.draftItems.map((i) => i.id)).toEqual([11, 12])
-
-    vm.draftItems[0].name = '吃饭（改）'
-    await vm.onSave()
+    await vm.onItemSubmit({ name: '打印费', type: 'expense', icon: 'print', color: 'cyan' })
     await flushPromises()
 
     expect(updateTemplate).toHaveBeenCalledTimes(1)
-    const sentItems = updateTemplate.mock.calls[0][2] as { id?: number | null; name: string }[]
-    expect(sentItems.map((i) => i.id)).toEqual([11, 12])
-    expect(sentItems[0].name).toBe('吃饭（改）')
+    const [id, name, sent] = updateTemplate.mock.calls[0] as [number, string, DraftLike[]]
+    expect(id).toBe(7)
+    expect(name).toBe('我的模板')
+    expect(sent.map((i) => i.name)).toEqual(['吃饭', '工资', '打印费'])
+    expect(sent.map((i) => i.id)).toEqual([11, 12, undefined])
   })
 
-  it('新增的条目不带 id（后端据此判为新增）', async () => {
+  it('改名 → 立刻 PUT，并保留该条的 id（否则后端会当成删旧建新）', async () => {
+    updateTemplate.mockResolvedValue({ ...mine })
     const { vm } = await mountPage([mine])
 
-    vm.onItemSubmit({ name: '打印费', type: 'expense', icon: 'print', color: 'cyan' })
+    await vm.openEdit(vm.items[0])
+    await vm.onItemSubmit({ name: '吃饭（改）', type: 'expense', icon: 'dining', color: 'red' })
+    await flushPromises()
 
-    const added = vm.draftItems.find((i) => i.name === '打印费')
-    expect(added).toBeTruthy()
-    expect(added?.id).toBeUndefined()
+    const [, , sent] = updateTemplate.mock.calls[0] as [number, string, DraftLike[]]
+    expect(sent[0].name).toBe('吃饭（改）')
+    expect(sent[0].id).toBe(11)
+    expect(sent).toHaveLength(2)
   })
 
-  it('复制内置模板时把条目 id 去掉（不能拿别人的条目 id 去改原模板）', async () => {
+  it('删除一条 → 确认后立刻 PUT，且列表里不再包含它', async () => {
+    const { ElMessageBox } = await import('element-plus')
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+    updateTemplate.mockResolvedValue({ ...mine, items: [mine.items[1]] })
+    const { vm } = await mountPage([mine])
+
+    await vm.onDelete(vm.items[0])
+    await flushPromises()
+
+    const [, , sent] = updateTemplate.mock.calls[0] as [number, string, DraftLike[]]
+    expect(sent.map((i) => i.name)).toEqual(['工资'])
+  })
+
+  it('后端拒绝（比如分类还有流水）→ 本地列表回滚成后端状态，不做假装成功的更新', async () => {
+    const { ElMessageBox } = await import('element-plus')
+    vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
+    updateTemplate.mockRejectedValue(new Error('400'))
+    const { vm } = await mountPage([mine])
+
+    await vm.onDelete(vm.items[0])
+    await flushPromises()
+
+    // 保存失败后重新拉了一次列表 → 仍是两条
+    expect(vm.items.map((i) => i.name)).toEqual(['吃饭', '工资'])
+  })
+
+  it('内置模板（id=0）编辑前先复制一份，且复制时不能带条目 id', async () => {
     const { ElMessageBox } = await import('element-plus')
     vi.spyOn(ElMessageBox, 'confirm').mockResolvedValue('confirm' as never)
     createTemplate.mockResolvedValue({ id: 99, name: '班级班费（副本）', builtin: false, items: [] })
@@ -198,8 +190,7 @@ describe('CategoriesView（模板页）', () => {
     await flushPromises()
 
     expect(createTemplate).toHaveBeenCalledTimes(1)
-    const sentItems = createTemplate.mock.calls[0][1] as { id?: number | null }[]
-    // 内置投影本身 id 是 null，复制时也必须清空（换成真实模板时这条护栏才真正生效）
-    expect(sentItems.every((item) => item.id === undefined)).toBe(true)
+    const sent = createTemplate.mock.calls[0][1] as { id?: number | null }[]
+    expect(sent.every((item) => item.id === undefined)).toBe(true)
   })
 })

@@ -16,11 +16,12 @@ import { colorOf, iconOf } from '../utils/category'
 import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
 
 /**
- * 分类模板管理页（账号级，**与当前账本的分类无关**）。
+ * 分类模板管理页（账号级）。
  *
- * <p>页面下半部分那两张「支出 / 收入」卡片，展示并编辑的就是**所选模板**的条目：
- * 改完是本地草稿，点「保存模板」才提交（`PUT /api/category-templates/{id}`）。
- * **保存时会同步到用过这套模板的账本**（见后端 `CategoryTemplateSyncService`）：
+ * <p>页面下半部分那两张「支出 / 收入」卡片，展示并编辑的就是**所选模板**的条目。
+ * **没有草稿、没有「保存」按钮：加一条 / 改一条 / 删一条都立刻提交**
+ * （`PUT /api/category-templates/{id}`，后端按条目 id 增量合并）。
+ * 保存会同步到用过这套模板的账本（见后端 `CategoryTemplateSyncService`）：
  * 新增补分类、改名改分类（流水跟着走）、删除要求该分类没有流水。
  *
  * <p>「班级班费」是**注册时自动建好的真实模板**，和其他模板一样能改名、增删条目、删除。
@@ -47,9 +48,9 @@ const selectedTemplate = computed(
 )
 const selectedIsBuiltin = computed(() => selectedTemplate.value?.builtin ?? true)
 
-/* ---------- 草稿：从所选模板同步，改动只在本地 ---------- */
+/* ---------- 当前模板的条目：改一下就存一下（没有草稿、没有「保存」按钮） ---------- */
 
-const draftItems = ref<TemplateItemInput[]>([])
+const items = ref<TemplateItemInput[]>([])
 const saving = ref(false)
 /**
  * 勾选状态：**必须声明在下面那个 immediate watcher 之前**，
@@ -58,11 +59,11 @@ const saving = ref(false)
  */
 const selectedKeys = ref<string[]>([])
 
-function syncDraft(): void {
+function syncItems(): void {
   const template = selectedTemplate.value
-  draftItems.value = template
+  items.value = template
     ? template.items.map((item) => ({
-        // id 要一路带到保存：后端靠它区分「改名」和「删旧建新」
+        // id 要一路带到后端：它决定这次是「改名」还是「删旧建新」
         id: item.id,
         name: item.name,
         type: item.type,
@@ -72,69 +73,61 @@ function syncDraft(): void {
     : []
 }
 
-/**
- * 有改动才允许保存。
- * <p>比较时**必须归一化**：后端可能返回 null / 缺字段 / 空字符串，顺序也可能因为
- * sortOrder 与插入顺序不同而错位——之前直接拼字符串比较，导致「什么都没改也提示有改动」。
- * 这里统一：type + 去空格的名称 + icon/color 缺省为空串，并按同样顺序做多重集比较。
- */
-function signature(item: TemplateItemInput): string {
-  return [
-    item.type,
-    (item.name ?? '').trim(),
-    (item.icon ?? '').trim(),
-    (item.color ?? '').trim(),
-  ].join('|')
-}
-
-const dirty = computed(() => {
-  const template = selectedTemplate.value
-  if (!template) return false
-  const before = template.items.map(signature).sort()
-  const after = draftItems.value.map(signature).sort()
-  return before.length !== after.length || before.some((value, index) => value !== after[index])
-})
-
-/** 选中模板变了（含首次加载）→ 草稿重新对齐；这是唯一的数据来源，避免草稿残留上一套模板 */
+/** 选中模板变了（含首次加载）→ 本地列表重新对齐；这是唯一的数据来源，避免串到上一套模板 */
 watch(
   () => selectedTemplate.value?.id,
   () => {
-    syncDraft()
+    syncItems()
     selectedKeys.value = []
   },
   { immediate: true },
 )
 
 /**
- * 切换模板。**下拉用 `:model-value` 单向绑定**（不是 v-model），由这里决定到底要不要切：
- * 有未保存改动时先确认，选「继续编辑」就**真的不切**（不写 templateId，下拉自动回到原值）。
- * <p>之前用 v-model + watch，选完确认框时模型已经改掉了，「继续编辑」反而什么都没拦住。
+ * 下拉用 `:model-value` 单向绑定（不是 v-model）：切换必须由这里写 templateId，
+ * 否则选中值先变、列表还是旧的。现在是实时保存，切换不需要再确认。
  */
-async function onTemplateChange(next: number): Promise<void> {
+function onTemplateChange(next: number): void {
   if (next === templateId.value) return
-  if (dirty.value) {
-    const discard = await ElMessageBox.confirm(
-      '当前模板还有没保存的改动，切换后这些改动会丢失。',
-      '放弃改动？',
-      { type: 'warning', confirmButtonText: '放弃并切换', cancelButtonText: '继续编辑' },
-    )
-      .then(() => true)
-      .catch(() => false)
-    if (!discard) return
-  }
   templateId.value = next
-  syncDraft()
+  syncItems()
   selectedKeys.value = []
 }
 
-/* ---------- 条目增删改（全部落在草稿上） ---------- */
+/**
+ * 把整份条目写回后端（`PUT` 按 id 增量合并，同时同步到用过这套模板的账本）。
+ * <p>失败（重名、删掉有流水的分类…）由拦截器弹提示，这里再拉一次列表，
+ * 保证界面和后端一致——不做「假装成功」的乐观更新。
+ */
+async function persist(next: TemplateItemInput[], success: string): Promise<boolean> {
+  const template = selectedTemplate.value
+  if (!template || template.builtin || saving.value) return false
+  if (next.length === 0) {
+    ElMessage.warning('模板至少保留一个分类')
+    return false
+  }
+  saving.value = true
+  try {
+    await updateTemplate(template.id, template.name, next)
+    await loadTemplates()
+    ElMessage.success(success)
+    return true
+  } catch {
+    await loadTemplates()
+    return false
+  } finally {
+    saving.value = false
+  }
+}
+
+/* ---------- 条目增删改：每一处都直接落库 ---------- */
 
 function itemKey(item: TemplateItemInput): string {
   return `${item.type}|${item.name}`
 }
 
 function byType(type: TxType): TemplateItemInput[] {
-  return draftItems.value.filter((item) => item.type === type)
+  return items.value.filter((item) => item.type === type)
 }
 
 const dialogVisible = ref(false)
@@ -169,11 +162,11 @@ async function ensureEditableTemplate(): Promise<boolean> {
     // 复制出来的是**新模板**，条目 id 必须去掉：带过去会被后端当成「改原来那套模板的条目」
     const clone = await createTemplate(
       name,
-      draftItems.value.map(({ id: _id, ...rest }) => rest),
-    );
+      items.value.map(({ id: _id, ...rest }) => rest),
+    )
     await loadTemplates()
     templateId.value = clone.id
-    syncDraft()
+    syncItems()
     ElMessage.success(`已复制为「${clone.name}」，现在可以改了`)
     return true
   } catch {
@@ -198,57 +191,56 @@ async function openEdit(item: TemplateItemInput): Promise<void> {
   dialogVisible.value = true
 }
 
-/** 弹窗提交：新增或改某一条（含图标/颜色），仍然只改草稿 */
-function onItemSubmit(payload: { name: string; type: TxType; icon: string; color: string }): void {
-  const duplicate = draftItems.value.some(
-    (item) =>
-      item.type === payload.type &&
-      item.name === payload.name &&
-      item !== editingItem.value,
+/** 弹窗提交：新增或改某一条（含图标/颜色），**立刻保存**，成功才关弹窗 */
+async function onItemSubmit(payload: {
+  name: string
+  type: TxType
+  icon: string
+  color: string
+}): Promise<void> {
+  const duplicate = items.value.some(
+    (item) => item.type === payload.type && item.name === payload.name && item !== editingItem.value,
   )
   if (duplicate) {
     ElMessage.warning('这套模板里已有同名分类')
     return
   }
-  if (editingItem.value) {
-    editingItem.value.name = payload.name
-    editingItem.value.icon = payload.icon
-    editingItem.value.color = payload.color
-  } else {
-    draftItems.value.push({
-      name: payload.name,
-      type: payload.type,
-      icon: payload.icon,
-      color: payload.color,
-    })
-  }
-  dialogVisible.value = false
+  const editing = editingItem.value
+  // 编辑时保留原条目 id：后端据此「改这一条」而不是「删旧建新」
+  const next = editing
+    ? items.value.map((item) => (item === editing ? { ...item, ...payload } : item))
+    : [...items.value, payload]
+  const ok = await persist(next, editing ? `已修改「${payload.name}」` : `已新增「${payload.name}」`)
+  if (ok) dialogVisible.value = false
 }
 
 async function onDelete(item: TemplateItemInput): Promise<void> {
   if (!(await ensureEditableTemplate())) return
   const confirmed = await ElMessageBox.confirm(
-    `从模板里删掉「${item.name}」？保存后会同步删掉账本里的同名分类（已有流水的会被拦下）。`,
+    `删掉「${item.name}」？会同步删掉账本里的同名分类（已有流水的会被拦下）。`,
     '删除分类',
     { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
   )
     .then(() => true)
     .catch(() => false)
   if (!confirmed) return
-  draftItems.value = draftItems.value.filter((other) => other !== item)
+  await persist(
+    items.value.filter((other) => other !== item),
+    `已删除「${item.name}」`,
+  )
 }
 
-/* ---------- 勾选与批量删除（同样是草稿） ---------- */
+/* ---------- 勾选与批量删除 ---------- */
 
 const allSelected = computed(
-  () => draftItems.value.length > 0 && selectedKeys.value.length === draftItems.value.length,
+  () => items.value.length > 0 && selectedKeys.value.length === items.value.length,
 )
 const someSelected = computed(
-  () => selectedKeys.value.length > 0 && selectedKeys.value.length < draftItems.value.length,
+  () => selectedKeys.value.length > 0 && selectedKeys.value.length < items.value.length,
 )
 
 function toggleAll(checked: boolean | string | number): void {
-  selectedKeys.value = checked ? draftItems.value.map(itemKey) : []
+  selectedKeys.value = checked ? items.value.map(itemKey) : []
 }
 
 /** 单行勾选：selectedKeys 是普通数组，用 includes 驱动复选框（不是 el-checkbox-group） */
@@ -283,7 +275,7 @@ async function onBatchDelete(): Promise<void> {
   if (!selectedKeys.value.length) return
   const count = selectedKeys.value.length
   const confirmed = await ElMessageBox.confirm(
-    `从模板里删除选中的 ${count} 个分类？保存后会同步删掉账本里的对应分类（已有流水的会被拦下）。`,
+    `删除选中的 ${count} 个分类？会同步删掉账本里的对应分类（已有流水的会被拦下）。`,
     '批量删除分类',
     { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
   )
@@ -291,36 +283,16 @@ async function onBatchDelete(): Promise<void> {
     .catch(() => false)
   if (!confirmed) return
   const keys = new Set(selectedKeys.value)
-  draftItems.value = draftItems.value.filter((item) => !keys.has(itemKey(item)))
-  selectedKeys.value = []
-}
-
-/* ---------- 保存 ---------- */
-
-async function onSave(): Promise<void> {
-  const template = selectedTemplate.value
-  if (!template || template.builtin || saving.value || !dirty.value) return
-  if (draftItems.value.length === 0) {
-    ElMessage.warning('模板至少保留一个分类')
-    return
-  }
-  saving.value = true
-  try {
-    const saved = await updateTemplate(template.id, template.name, draftItems.value)
-    await loadTemplates()
-    templateId.value = saved.id
-    syncDraft()
-    ElMessage.success(`已保存「${saved.name}」`)
-  } catch {
-    // 校验失败等 400 已由拦截器提示
-  } finally {
-    saving.value = false
-  }
+  const ok = await persist(
+    items.value.filter((item) => !keys.has(itemKey(item))),
+    `已删除 ${count} 个分类`,
+  )
+  if (ok) selectedKeys.value = []
 }
 
 /* ---------- 模板本身：新建 / 存为 / 重命名 / 删除 ---------- */
 
-/** 模板列表变更后（例如别处改名/删模板），若本地没有未保存改动就把草稿对齐到最新 */
+/** 模板列表变更后（例如刚保存过条目）把本地列表对齐到最新 */
 async function loadTemplates(): Promise<void> {
   try {
     templates.value = await listTemplates()
@@ -333,9 +305,7 @@ async function loadTemplates(): Promise<void> {
   if (!templates.value.some((t) => t.id === templateId.value)) {
     templateId.value = templates.value[0]?.id ?? BUILTIN_ID
   }
-  if (!dirty.value) {
-    syncDraft()
-  }
+  syncItems()
 }
 
 /** 删模板会把引用它的账本指回内置，所以 books 也要重拉 */
@@ -442,9 +412,8 @@ onMounted(async () => {
     <div class="page-head">
       <h2 class="page-title">分类模板</h2>
       <p class="page-desc">
-        这一页管理的是<b>账号级的分类模板</b>：下面两张卡片就是所选模板的内容，改完点「保存模板」生效。
-        <b>保存会把改动同步到用过这套模板的账本</b>（新增补分类、改名改分类、删除要求该分类没有流水）；
-        模板只在<b>新建账本</b>时另有复制。
+        <b>实时保存</b>：加一条、改一条、删一条都立刻生效，没有「保存」按钮。
+        改动会同步到用过这套模板的账本（新增补分类、改名改分类、删除要求该分类没有流水）。
       </p>
     </div>
 
@@ -469,9 +438,8 @@ onMounted(async () => {
 
       <p class="tpl-tip">
         「班级班费」是注册时自动给你建好的模板，和自建模板一样可以改名、增删条目、删除。
-        <b>保存模板会同步到用过这套模板的账本</b>：新增的会补进账本，改名会跟着改，
+        <b>每改一处都立刻保存并同步到用过这套模板的账本</b>：新增的会补进账本，改名会跟着改，
         删掉的分类若已经有流水会被拦下来（先改流水再删）。
-        切换模板时若有未保存的改动会提示你确认。
       </p>
     </section>
 
@@ -479,32 +447,23 @@ onMounted(async () => {
       <el-checkbox
         :model-value="allSelected"
         :indeterminate="someSelected"
-        :disabled="draftItems.length === 0"
+        :disabled="items.length === 0"
         @change="toggleAll"
       >
         全选
       </el-checkbox>
-      <span class="batch-count">已选 {{ selectedKeys.length }} / {{ draftItems.length }} 个</span>
+      <span class="batch-count">已选 {{ selectedKeys.length }} / {{ items.length }} 个</span>
       <el-button
         type="danger"
         plain
         size="small"
-        :disabled="!selectedKeys.length"
+        :disabled="!selectedKeys.length || saving"
         @click="onBatchDelete"
       >
         删除所选
       </el-button>
       <span class="batch-spacer" />
-      <span v-if="dirty" class="tpl-dirty">有未保存的改动</span>
-      <el-button
-        type="primary"
-        size="small"
-        :disabled="!dirty"
-        :loading="saving"
-        @click="onSave"
-      >
-        保存模板
-      </el-button>
+      <span v-if="saving" class="tpl-dirty">保存中…</span>
     </section>
 
     <section v-for="group in GROUPS" :key="group.type" class="cat-card">
@@ -565,7 +524,7 @@ onMounted(async () => {
       :type="formType"
       :initial="formInitial"
       :title="editingItem ? '编辑分类' : undefined"
-      :saving="false"
+      :saving="saving"
       @submit="onItemSubmit"
     />
 
