@@ -215,7 +215,7 @@ onMounted(async () => {
     <aside class="sidebar">
       <div class="brand">
         <span class="nav-icon">📒</span>
-        <span class="label brand-text">班级记账</span>
+        <span class="label brand-text">bookkeep</span>
       </div>
 
       <nav class="nav">
@@ -375,7 +375,7 @@ onMounted(async () => {
         </el-checkbox>
       </el-checkbox-group>
 
-      <p class="share-tip">链接 <strong>3 天有效</strong>。</p>
+      <p class="share-tip">注意：链接 3 天有效</p>
 
       <div v-if="shareResult" class="share-result">
         <div class="share-result-head">

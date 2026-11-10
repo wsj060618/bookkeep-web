@@ -187,21 +187,18 @@ onMounted(load)
                 <span class="tx-note">{{ tx.note || '—' }}</span>
                 <span class="tx-date">{{ tx.transDate }} · 结余 ￥{{ tx.balanceAfter }}</span>
               </div>
-              <!-- 票据：公示页只读，直接走匿名图片路径（不用带 token 的请求头） -->
+              <!-- 票据：只读，直接给匿名图片地址，点开新标签看原图 -->
               <div v-if="tx.receiptCount > 0" class="tx-receipts">
-                <el-image
-                  v-for="receipt in tx.receipts"
-                  :key="receipt.id"
-                  class="tx-receipt"
-                  :src="publicReceiptUrl(token, receipt.id)"
-                  :preview-src-list="tx.receipts.map((r) => publicReceiptUrl(token, r.id))"
-                  :initial-index="tx.receipts.findIndex((r) => r.id === receipt.id)"
-                  fit="cover"
-                  :alt="receipt.title"
-                  :title="receipt.title"
-                  preview-teleported
-                  lazy
-                />
+                <span class="tx-receipts-label">票据：</span>
+                <template v-for="(receipt, i) in tx.receipts" :key="receipt.id">
+                  <span v-if="i > 0" class="tx-receipts-sep">、</span>
+                  <a
+                    class="tx-receipts-link"
+                    :href="publicReceiptUrl(token, receipt.id)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >{{ receipt.title }}</a>
+                </template>
               </div>
             </div>
           </li>
@@ -419,21 +416,32 @@ onMounted(load)
   white-space: nowrap;
 }
 
-/* 票据缩略图：公示页只读，点开看大图（el-image 自带预览） */
+/* 票据：文字链接列表 */
 .tx-receipts {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
+  align-items: baseline;
+  gap: 0;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
-.tx-receipt {
-  width: 56px;
-  height: 56px;
-  border-radius: 6px;
-  border: 1px solid var(--el-border-color-lighter);
-  background: #fff;
-  cursor: zoom-in;
+.tx-receipts-label {
+  color: var(--el-text-color-secondary);
+}
+
+.tx-receipts-sep {
+  color: var(--el-text-color-placeholder);
+}
+
+.tx-receipts-link {
+  color: var(--el-color-primary);
+  text-decoration: none;
+}
+
+.tx-receipts-link:hover {
+  text-decoration: underline;
 }
 
 .footer {

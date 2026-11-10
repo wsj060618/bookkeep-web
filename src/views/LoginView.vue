@@ -61,7 +61,7 @@ async function onSubmit(): Promise<void> {
   <div class="login-page">
     <el-card class="login-card">
       <template #header>
-        <h1 class="login-title">记账本</h1>
+        <h1 class="login-title">bookkeep</h1>
         <p class="login-subtitle">登录后查看你的账本</p>
       </template>
 
