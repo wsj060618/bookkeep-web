@@ -29,8 +29,6 @@ const el = ref<HTMLDivElement | null>(null)
 let chart: ECharts | null = null
 let observer: ResizeObserver | null = null
 
-/** 入场时柱子/扇区依次出现（最多错开 4 档，条目再多也不会拖成一长串） */
-const stagger = (idx: number): number => Math.min(idx, 4) * 90
 
 function money(value: string): string {
   return `￥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -46,12 +44,7 @@ const items = computed(() => [
 function buildOption(): EChartsCoreOption {
   if (props.type === 'donut') {
     return {
-      // 动画显式写出来：ECharts 默认就有，但以前 render() 里紧跟一句 resize() 会把它顶掉
-      animation: true,
-      animationDuration: 1500,
-      animationDurationUpdate: 600,
-      animationEasing: 'cubicOut',
-      animationEasingUpdate: 'cubicOut',
+      // 动画一律走 ECharts 默认（1s / cubicInOut，见 globalDefault.js），这里只修「别在 setOption 后 resize」
       tooltip: {
         trigger: 'item',
         formatter: (params: unknown) => {
@@ -63,7 +56,6 @@ function buildOption(): EChartsCoreOption {
       series: [
         {
           type: 'pie',
-          animationDelay: stagger,
           // 只比收入和支出：结余是差额，放进占比会重复计算
           radius: ['46%', '70%'],
           center: ['50%', '44%'],
@@ -83,11 +75,6 @@ function buildOption(): EChartsCoreOption {
   }
 
   return {
-    animation: true,
-    animationDuration: 1500,
-    animationDurationUpdate: 600,
-    animationEasing: 'cubicOut',
-    animationEasingUpdate: 'cubicOut',
     grid: { left: 8, right: 16, top: 28, bottom: 8, containLabel: true },
     tooltip: {
       trigger: 'axis',
@@ -112,7 +99,6 @@ function buildOption(): EChartsCoreOption {
     series: [
       {
         type: 'bar',
-        animationDelay: stagger,
         barMaxWidth: 42,
         data: items.value.map((item) => ({
           value: item.value,
