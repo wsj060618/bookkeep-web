@@ -149,8 +149,10 @@ async function loadTemplates(): Promise<void> {
   } catch {
     // 拉不到模板不影响建账本：留空数组，后端收到省略的 templateId 就用内置
   }
+  // 默认模板现在是一条真实模板（注册时建的），所以「不在列表里」时回落到列表第一套，
+  // 而不是 id=0（只有模板被全删的历史账号才还会返回 id=0 的只读投影）
   if (!templates.value.some((t) => t.id === newTemplateId.value)) {
-    newTemplateId.value = BUILTIN_ID
+    newTemplateId.value = templates.value[0]?.id ?? BUILTIN_ID
   }
 }
 
