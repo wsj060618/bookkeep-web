@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchPublicReport } from '../api/public'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
+
+/** 收支对比图按需加载（ECharts 只在真要画图时才拉） */
+const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
 import type { PublicBookReport, PublicReport } from '../types/api'
 import { colorOf, iconOf } from '../utils/category'
 
@@ -118,6 +121,31 @@ onMounted(load)
           <div class="number">
             <span class="label">累计结余</span>
             <span class="value strong">￥{{ current?.totalBalance ?? '0.00' }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 收支对比：和统计页同一套图（柱状：收入/支出/结余；环形：收支占比） -->
+      <section v-loading="loading" class="card">
+        <h2 class="card-title">收支对比</h2>
+        <div class="compare-row">
+          <div class="compare-block">
+            <header class="compare-head">金额对比（柱状）</header>
+            <CompareChart
+              type="bar"
+              :income="current?.income ?? '0.00'"
+              :expense="current?.expense ?? '0.00'"
+              :balance="current?.balance ?? '0.00'"
+            />
+          </div>
+          <div class="compare-block">
+            <header class="compare-head">收支占比（环形）</header>
+            <CompareChart
+              type="donut"
+              :income="current?.income ?? '0.00'"
+              :expense="current?.expense ?? '0.00'"
+              :balance="current?.balance ?? '0.00'"
+            />
           </div>
         </div>
       </section>
@@ -273,6 +301,26 @@ onMounted(load)
   margin-bottom: 12px;
 }
 
+.compare-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.compare-block {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--el-fill-color-lighter);
+}
+
+.compare-head {
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+}
+
 .card-title {
   margin: 0 0 8px;
   font-size: 13px;
@@ -363,7 +411,8 @@ onMounted(load)
 }
 
 @media (max-width: 900px) {
-  .charts-row {
+  .charts-row,
+  .compare-row {
     grid-template-columns: 1fr;
   }
 }
