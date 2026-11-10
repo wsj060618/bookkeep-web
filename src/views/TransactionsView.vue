@@ -370,19 +370,19 @@ onMounted(() => {
 
     <el-dialog v-model="importVisible" title="导入流水" width="min(560px, 94vw)">
       <p class="import-tip">
-        支持 <b>CSV</b> 与 <b>Excel（.xlsx）</b>，列固定为：日期 / 类型 / 分类 / 金额 / 备注。
-        类型填「收入」「支出」（也认 income / expense）；分类必须已经在当前账本里，
-        <b>不会自动新建分类</b>。
+        只支持 <b>CSV</b>（Excel 里「另存为 → CSV UTF-8（逗号分隔）」）。列固定为：
+        日期 / 类型 / 分类 / 金额 / 备注。类型填「收入」「支出」（也认 income / expense）；
+        分类必须已经在当前账本里，<b>不会自动新建分类</b>。
       </p>
 
       <div class="import-row">
         <el-upload
           :auto-upload="false"
           :show-file-list="false"
-          accept=".csv,.xlsx,.xls"
+          accept=".csv"
           :on-change="onPickFile"
         >
-          <el-button>选择文件</el-button>
+          <el-button>选择 CSV 文件</el-button>
         </el-upload>
         <el-button link type="primary" @click="downloadTemplate">下载模板</el-button>
         <span v-if="pickedFile" class="import-file">{{ pickedFile.name }}</span>
