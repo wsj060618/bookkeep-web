@@ -5,6 +5,7 @@ import { createTransaction, updateTransaction } from '../api/transaction'
 import { createCategory } from '../api/category'
 import CategoryFormDialog from './CategoryFormDialog.vue'
 import { iconOf } from '../utils/category'
+import { amountRule } from '../utils/validate'
 import type { Category, Transaction, TxType } from '../types/api'
 
 /**
@@ -104,12 +105,8 @@ const rules: FormRules = {
   categoryId: [{ required: true, message: '请选择分类', trigger: 'change' }],
   amount: [
     { required: true, message: '请输入金额', trigger: 'blur' },
-    {
-      // 金额以字符串传后端（PLAN §5.0：BigDecimal 按字符串序列化），前端只需保证格式
-      pattern: /^(?!0+(\.0{1,2})?$)\d{1,10}(\.\d{1,2})?$/,
-      message: '金额需大于 0，最多两位小数',
-      trigger: 'blur',
-    },
+    // 金额以字符串传后端；范围与后端 MoneyRules 一致（0.01 ~ 999,999.99）
+    amountRule,
   ],
   transDate: [{ required: true, message: '请选择日期', trigger: 'change' }],
 }
@@ -210,7 +207,13 @@ async function onSubmit(): Promise<void> {
       </el-form-item>
 
       <el-form-item label="金额（元）" prop="amount">
-        <el-input v-model="form.amount" inputmode="decimal" placeholder="0.00" clearable />
+        <el-input
+          v-model="form.amount"
+          inputmode="decimal"
+          placeholder="0.01 ~ 999,999.99"
+          maxlength="12"
+          clearable
+        />
       </el-form-item>
 
       <el-form-item label="日期" prop="transDate">

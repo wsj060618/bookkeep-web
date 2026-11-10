@@ -38,3 +38,27 @@ export const passwordRule: FormItemRule = {
   },
   trigger: 'blur',
 }
+
+/**
+ * 金额的唯一口径，必须和后端 `MoneyRules` 保持一致：0.01 ~ 999,999.99，最多两位小数。
+ * 上限不是业务限制而是防溢出——库里 `amount` / `balance_after` 是 DECIMAL(12,2)，
+ * 以前前端放过 10 位整数，填大了累加结余会顶出列宽。
+ */
+export const AMOUNT_MAX = 999999.99
+
+export const AMOUNT_MESSAGE = '金额需在 0.01 ~ 999,999.99 元之间，最多两位小数'
+
+/** 金额输入规则；空值交给 required 规则 */
+export const amountRule: FormItemRule = {
+  validator: (_rule, value: string, callback) => {
+    const v = (value ?? '').trim()
+    if (!v) return callback()
+    // 只认「数字 + 最多两位小数」，顺带挡住 1e5、+100、空格这类 BigDecimal 之外的写法
+    if (!/^\d{1,9}(\.\d{1,2})?$/.test(v)) {
+      return callback(new Error(AMOUNT_MESSAGE))
+    }
+    const n = Number(v)
+    callback(n >= 0.01 && n <= AMOUNT_MAX ? undefined : new Error(AMOUNT_MESSAGE))
+  },
+  trigger: 'blur',
+}
