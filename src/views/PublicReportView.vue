@@ -69,8 +69,18 @@ onMounted(load)
 <template>
   <div class="page">
     <header class="header">
-      <h1 class="title">{{ current?.bookName ?? '班级账本' }}</h1>
+      <!-- 多本账本时标题改成通用名，账本本身交给右侧下拉（避免标题与下拉重复） -->
+      <h1 class="title">{{ books.length > 1 ? '班费公示' : (current?.bookName ?? '班级账本') }}</h1>
       <span class="badge">只读公示</span>
+
+      <el-select
+        v-if="books.length > 1"
+        v-model="activeBookId"
+        size="small"
+        class="book-select"
+      >
+        <el-option v-for="b in books" :key="b.bookId" :value="b.bookId" :label="b.bookName" />
+      </el-select>
     </header>
 
     <el-result v-if="failed" icon="warning" title="公示页不存在或已失效" sub-title="请向分享链接的同学确认地址是否完整">
@@ -79,16 +89,7 @@ onMounted(load)
     <template v-else>
       <section v-loading="loading" class="card">
         <div class="card-head">
-          <!-- 一条链接带多本账本：统一用下拉切换，只占一行，账本多少都一样 -->
-          <el-select
-            v-if="books.length > 1"
-            v-model="activeBookId"
-            size="small"
-            class="book-select"
-          >
-            <el-option v-for="b in books" :key="b.bookId" :value="b.bookId" :label="b.bookName" />
-          </el-select>
-          <span v-else class="month-label">{{ current?.month ?? '' }} 收支</span>
+          <span class="month-label">{{ current?.month ?? '' }} 收支</span>
 
           <el-date-picker
             v-model="month"
@@ -215,10 +216,11 @@ onMounted(load)
   margin-bottom: 12px;
 }
 
-/* 账本切换：统一用下拉，一行放得下，账本多少都不挤 */
+/* 账本切换：放在标题行右侧，一行放得下，账本多少都不挤 */
 .book-select {
+  margin-left: auto;
   width: 200px;
-  max-width: 100%;
+  max-width: 45%;
 }
 
 .month-label {
