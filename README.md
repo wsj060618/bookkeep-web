@@ -1,7 +1,16 @@
 # bookkeep-web
+![Vue 3](https://img.shields.io/badge/Vue-3-42B883?logo=vuedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
+![Element Plus](https://img.shields.io/badge/Element_Plus-2-409EFF)
+![Pinia](https://img.shields.io/badge/Pinia-4-FFD859)
+![vue-router](https://img.shields.io/badge/vue--router-4-209A55)
+![Axios](https://img.shields.io/badge/Axios-1-5A29E4?logo=axios&logoColor=white)
+![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
+![Vitest](https://img.shields.io/badge/Vitest-5-6E9F18?logo=vitest&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-bookkeep 的前端：Vue 3 + TypeScript + Vite + Element Plus。
-后端仓库在 `D:\coding\bookkeep-server`（Spring Boot + MySQL）。
+后端仓库: https://github.com/wsj060618/bookkeep-server.git
 
 ## 页面
 
@@ -18,18 +27,6 @@ bookkeep 的前端：Vue 3 + TypeScript + Vite + Element Plus。
 
 登录后的页面统一套 `AppLayout`（桌面左侧竖栏，手机抽屉导航），「记一笔」「分享」两个弹窗挂在 layout 上共用。
 
-## 技术栈
-
-![Vue 3](https://img.shields.io/badge/Vue-3-42B883?logo=vuedotjs&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
-![Element Plus](https://img.shields.io/badge/Element_Plus-2-409EFF)
-![Pinia](https://img.shields.io/badge/Pinia-4-FFD859)
-![vue-router](https://img.shields.io/badge/vue--router-4-209A55)
-![Axios](https://img.shields.io/badge/Axios-1-5A29E4?logo=axios&logoColor=white)
-![ECharts](https://img.shields.io/badge/ECharts-6-AA344D)
-![Vitest](https://img.shields.io/badge/Vitest-5-6E9F18?logo=vitest&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
 
 ## 项目结构
 
