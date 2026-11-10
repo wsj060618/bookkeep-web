@@ -49,6 +49,11 @@ export function exportBookReceipts(params: {
   return getFile('/transactions/receipts/export', { ...params })
 }
 
+/** GET /api/transactions/{id}/receipts/export —— 这一笔打成 zip（图片都在一个「图片/」文件夹里） */
+export function exportTransactionReceipts(transactionId: number): Promise<DownloadFile> {
+  return getFile(`/transactions/${transactionId}/receipts/export`)
+}
+
 /** POST /api/transactions/{id}/receipts/import —— 单笔票据打包导入（zip 里放这一笔的多张图） */
 export function importReceiptsZip(transactionId: number, file: File): Promise<ReceiptImportResult> {
   const form = new FormData()

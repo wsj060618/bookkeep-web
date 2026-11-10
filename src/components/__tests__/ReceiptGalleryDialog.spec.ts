@@ -17,6 +17,7 @@ const renameReceipt = vi.fn()
 const deleteReceipt = vi.fn()
 const uploadReceipt = vi.fn()
 const importReceiptsZip = vi.fn()
+const exportTransactionReceipts = vi.fn()
 
 vi.mock('../../api/receipt', () => ({
   listReceipts: (...args: unknown[]) => listReceipts(...args),
@@ -25,6 +26,7 @@ vi.mock('../../api/receipt', () => ({
   deleteReceipt: (...args: unknown[]) => deleteReceipt(...args),
   uploadReceipt: (...args: unknown[]) => uploadReceipt(...args),
   importReceiptsZip: (...args: unknown[]) => importReceiptsZip(...args),
+  exportTransactionReceipts: (...args: unknown[]) => exportTransactionReceipts(...args),
 }))
 
 vi.mock('../../api/request', () => ({ saveBlob: vi.fn() }))
@@ -58,7 +60,7 @@ interface DialogVm {
   removeSaved: (r: Receipt) => void
   undoRemove: (r: Receipt) => void
   removePending: (index: number) => void
-  downloadImages: () => Promise<void>
+  exportZip: () => Promise<void>
   titles: Record<number, string>
   receipts: Receipt[]
   kept: Receipt[]
@@ -98,6 +100,7 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
     deleteReceipt.mockReset().mockResolvedValue(undefined)
     uploadReceipt.mockReset().mockResolvedValue({})
     importReceiptsZip.mockReset().mockResolvedValue({ success: 2, failed: [] })
+    exportTransactionReceipts.mockReset().mockResolvedValue({ blob: new Blob(), filename: 'x.zip' })
     Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:mock'), writable: true })
     Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), writable: true })
   })
@@ -195,11 +198,10 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
     expect(emitted!.at(-1)).toEqual([false])
   })
 
-  it('「下载图片」按 日期_标题 逐张下载，不再打 zip', async () => {
+  it('「导出压缩包」调用单笔 zip 接口（不再逐张下载）', async () => {
     const { vm } = await open()
-    const { saveBlob } = await import('../../api/request')
-    await vm.downloadImages()
-    expect(saveBlob).toHaveBeenCalledWith(expect.any(Blob), '2026-09-05_超市小票.png')
+    await vm.exportZip()
+    expect(exportTransactionReceipts).toHaveBeenCalledWith(7)
   })
 
   it('没有改动时 dirty=false，保存按钮不会误触', async () => {

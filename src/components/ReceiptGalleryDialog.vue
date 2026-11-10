@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deleteReceipt,
+  exportTransactionReceipts,
   fetchReceiptBlob,
   importReceiptsZip,
   listReceipts,
@@ -71,13 +72,10 @@ const titles = reactive<Record<number, string>>({})
 const removed = reactive<Set<number>>(new Set())
 /** receiptId → objectURL（仅用于显示） */
 const previews = reactive<Record<number, string>>({})
-/** receiptId → 原始 Blob（下载时直接用，不必再从 objectURL 取） */
-const blobs = reactive<Record<number, Blob>>({})
 
 function revokeAll(): void {
   Object.values(previews).forEach((url) => URL.revokeObjectURL(url))
   Object.keys(previews).forEach((key) => delete previews[Number(key)])
-  Object.keys(blobs).forEach((key) => delete blobs[Number(key)])
   pending.value.forEach((item) => URL.revokeObjectURL(item.url))
 }
 
@@ -104,7 +102,6 @@ async function load(): Promise<void> {
       receipts.value.map(async (r) => {
         try {
           const blob = await fetchReceiptBlob(tx.id, r.id)
-          blobs[r.id] = blob
           previews[r.id] = URL.createObjectURL(blob)
         } catch {
           // 拦截器已提示
@@ -280,25 +277,15 @@ async function onImportZip(event: Event): Promise<void> {
   }
 }
 
-/** 下载这一笔的图片（逐张，不打包） */
-async function downloadImages(): Promise<void> {
+/** 把这一笔的票据打包导出（zip 里图片统一放在「图片/」文件夹） */
+async function exportZip(): Promise<void> {
   const tx = props.transaction
   if (!tx || kept.value.length === 0) return
-  let failed = 0
-  for (const receipt of kept.value) {
-    try {
-      // 优先用打开时缓存的字节；没有就现取（缓存可能因为加载失败为空）
-      const blob = blobs[receipt.id] ?? (await fetchReceiptBlob(tx.id, receipt.id))
-      const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg'
-      saveBlob(blob, `${tx.transDate}_${receipt.title}.${ext}`)
-      // 连续触发多次下载时，浏览器需要一点间隔才不会被合并/拦截
-      await new Promise((resolve) => setTimeout(resolve, 250))
-    } catch {
-      failed += 1
-    }
-  }
-  if (failed > 0) {
-    ElMessage.warning(`有 ${failed} 张下载失败，可稍后重试`)
+  try {
+    const file = await exportTransactionReceipts(tx.id)
+    saveBlob(file.blob, file.filename)
+  } catch {
+    // 拦截器已提示（没有票据时是 400 + 文案）
   }
 }
 </script>
@@ -394,7 +381,7 @@ async function downloadImages(): Promise<void> {
     <div v-if="kept.length + pending.length === 0 && !loading" class="empty">这笔流水还没有票据</div>
 
     <template #footer>
-      <el-button :disabled="kept.length === 0" @click="downloadImages">下载图片</el-button>
+      <el-button :disabled="kept.length === 0" @click="exportZip">导出压缩包</el-button>
       <el-button type="primary" :loading="saving" :disabled="!dirty" @click="save">保存</el-button>
     </template>
   </el-dialog>
