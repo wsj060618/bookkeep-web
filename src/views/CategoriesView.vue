@@ -19,8 +19,9 @@ import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
  * 分类模板管理页（账号级，**与当前账本的分类无关**）。
  *
  * <p>页面下半部分那两张「支出 / 收入」卡片，展示并编辑的就是**所选模板**的条目：
- * 改完是本地草稿，点「保存模板」才提交（`PUT /api/category-templates/{id}` 整体替换条目）。
- * 模板只在**新建账本**时被复制成那一本的分类；之后再改模板不会改动已有账本。
+ * 改完是本地草稿，点「保存模板」才提交（`PUT /api/category-templates/{id}`）。
+ * **保存时会同步到用过这套模板的账本**（见后端 `CategoryTemplateSyncService`）：
+ * 新增补分类、改名改分类（流水跟着走）、删除要求该分类没有流水。
  *
  * <p>「班级班费」是**注册时自动建好的真实模板**，和其他模板一样能改名、增删条目、删除。
  * `id=0` 的只读投影只在「账号一套模板都没有」时兜底，正常用不到。
@@ -61,6 +62,8 @@ function syncDraft(): void {
   const template = selectedTemplate.value
   draftItems.value = template
     ? template.items.map((item) => ({
+        // id 要一路带到保存：后端靠它区分「改名」和「删旧建新」
+        id: item.id,
         name: item.name,
         type: item.type,
         icon: item.icon,
@@ -163,7 +166,11 @@ async function ensureEditableTemplate(): Promise<boolean> {
     name = `${base}${i}`
   }
   try {
-    const clone = await createTemplate(name, draftItems.value.map((item) => ({ ...item })))
+    // 复制出来的是**新模板**，条目 id 必须去掉：带过去会被后端当成「改原来那套模板的条目」
+    const clone = await createTemplate(
+      name,
+      draftItems.value.map(({ id: _id, ...rest }) => rest),
+    );
     await loadTemplates()
     templateId.value = clone.id
     syncDraft()
@@ -221,7 +228,7 @@ function onItemSubmit(payload: { name: string; type: TxType; icon: string; color
 async function onDelete(item: TemplateItemInput): Promise<void> {
   if (!(await ensureEditableTemplate())) return
   const confirmed = await ElMessageBox.confirm(
-    `从模板里删掉「${item.name}」？（只改模板，不影响已有账本）`,
+    `从模板里删掉「${item.name}」？保存后会同步删掉账本里的同名分类（已有流水的会被拦下）。`,
     '删除分类',
     { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
   )
@@ -276,7 +283,7 @@ async function onBatchDelete(): Promise<void> {
   if (!selectedKeys.value.length) return
   const count = selectedKeys.value.length
   const confirmed = await ElMessageBox.confirm(
-    `从模板里删除选中的 ${count} 个分类？（只改模板，不影响已有账本）`,
+    `从模板里删除选中的 ${count} 个分类？保存后会同步删掉账本里的对应分类（已有流水的会被拦下）。`,
     '批量删除分类',
     { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
   )
@@ -403,7 +410,7 @@ async function onDeleteTemplate(): Promise<void> {
   const template = selectedTemplate.value
   if (!template || template.builtin) return
   const confirmed = await ElMessageBox.confirm(
-    `删除模板「${template.name}」后不可恢复；已经套用过它的账本不受影响（分类是复制过去的）。`,
+    `删除模板「${template.name}」后不可恢复；已经套用过它的账本保留现有分类（只是不再跟这套模板同步）。`,
     '删除模板',
     { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
   )
@@ -436,7 +443,8 @@ onMounted(async () => {
       <h2 class="page-title">分类模板</h2>
       <p class="page-desc">
         这一页管理的是<b>账号级的分类模板</b>：下面两张卡片就是所选模板的内容，改完点「保存模板」生效。
-        模板在<b>新建账本</b>时复制成那本账本的分类；已经有数据的账本不受模板改动影响。
+        <b>保存会把改动同步到用过这套模板的账本</b>（新增补分类、改名改分类、删除要求该分类没有流水）；
+        模板只在<b>新建账本</b>时另有复制。
       </p>
     </div>
 
@@ -460,8 +468,9 @@ onMounted(async () => {
       </div>
 
       <p class="tpl-tip">
-        「班级班费」是注册时自动给你建好的模板，和自建模板一样可以改名、增删条目、删除；
-        删除不影响已经用过它的账本（分类是复制过去的）。
+        「班级班费」是注册时自动给你建好的模板，和自建模板一样可以改名、增删条目、删除。
+        <b>保存模板会同步到用过这套模板的账本</b>：新增的会补进账本，改名会跟着改，
+        删掉的分类若已经有流水会被拦下来（先改流水再删）。
         切换模板时若有未保存的改动会提示你确认。
       </p>
     </section>

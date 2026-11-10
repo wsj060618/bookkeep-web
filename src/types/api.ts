@@ -59,6 +59,8 @@ export interface Book {
 
 /** 分类模板条目，字段与分类一一对应（新建账本时按此逐条预置） */
 export interface CategoryTemplateItem {
+  /** `category_template_item.id`；内置模板的只读投影为 null */
+  id: number | null
   name: string
   type: TxType
   icon: string | null
@@ -78,8 +80,15 @@ export interface CategoryTemplate {
   items: CategoryTemplateItem[]
 }
 
-/** 提交模板条目时不用带 sortOrder：后端按传入顺序（先支出后收入）自己编号 */
-export type TemplateItemInput = Pick<CategoryTemplateItem, 'name' | 'type' | 'icon' | 'color'>
+/**
+ * 提交模板条目时不用带 sortOrder：后端按传入顺序（先支出后收入）自己编号。
+ * **`id` 必须带回后端**：它决定这次是「改名」还是「删旧建新」——
+ * 改名会同步到账本里那条分类（流水不丢），删旧建新会被流水挡住。
+ * 新增条目不带 id。
+ */
+export type TemplateItemInput = Pick<CategoryTemplateItem, 'name' | 'type' | 'icon' | 'color'> & {
+  id?: number | null
+}
 
 /** POST /api/books/{id}/share 的响应：只给 token 与到期时间，URL 由前端用 origin 拼 */
 export interface ShareLink {

@@ -12,6 +12,8 @@ import type { CategoryTemplate, TxType } from '../types/api'
  */
 
 interface DraftItem {
+  /** 已有条目的 id；新增条目没有。保存时带回后端，用来区分「改名」和「删旧建新」 */
+  id?: number | null
   name: string
   type: TxType
   icon: string
@@ -55,6 +57,7 @@ watch(
     if (!open) return
     name.value = props.template?.name ?? ''
     items.value = (props.template?.items ?? []).map((item) => ({
+      id: item.id,
       name: item.name,
       type: item.type,
       icon: item.icon ?? 'other',
@@ -93,7 +96,8 @@ function onItemSubmit(payload: DraftItem): void {
   if (index === null) {
     items.value = [...items.value, payload]
   } else {
-    items.value = items.value.map((item, i) => (i === index ? payload : item))
+    // 分类弹窗只回名字/图标/颜色，id 得从原条目上带过来，否则「编辑」会变成「删旧建新」
+    items.value = items.value.map((item, i) => (i === index ? { ...payload, id: item.id } : item))
   }
   itemDialogVisible.value = false
 }

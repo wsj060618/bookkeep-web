@@ -23,7 +23,11 @@ export function createTemplateFromBook(name: string): Promise<CategoryTemplate> 
   return post<CategoryTemplate>('/category-templates/from-book', { name })
 }
 
-/** PUT /api/category-templates/{id}：改名；带 items 时**整体替换**条目 */
+/**
+ * PUT /api/category-templates/{id}：改名；带 items 时按 id 增量替换条目
+ * （带 id 的是改名/改图标，不带 id 的是新增，这次没出现的会被删掉）。
+ * **保存会同步到用过这套模板的账本**；删掉已被流水引用的分类会返回 400。
+ */
 export function updateTemplate(
   id: number,
   name: string,
