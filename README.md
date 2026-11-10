@@ -10,7 +10,7 @@
 ![Vitest](https://img.shields.io/badge/Vitest-5-6E9F18?logo=vitest&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-后端仓库: [bookkeep-server]https://github.com/wsj060618/bookkeep-server.git
+后端仓库: [bookkeep-server](https://github.com/wsj060618/bookkeep-server.git)
 
 ## 页面
 
