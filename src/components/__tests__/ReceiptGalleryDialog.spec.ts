@@ -16,6 +16,7 @@ const fetchReceiptBlob = vi.fn()
 const renameReceipt = vi.fn()
 const deleteReceipt = vi.fn()
 const uploadReceipt = vi.fn()
+const importReceiptsZip = vi.fn()
 
 vi.mock('../../api/receipt', () => ({
   listReceipts: (...args: unknown[]) => listReceipts(...args),
@@ -23,6 +24,7 @@ vi.mock('../../api/receipt', () => ({
   renameReceipt: (...args: unknown[]) => renameReceipt(...args),
   deleteReceipt: (...args: unknown[]) => deleteReceipt(...args),
   uploadReceipt: (...args: unknown[]) => uploadReceipt(...args),
+  importReceiptsZip: (...args: unknown[]) => importReceiptsZip(...args),
 }))
 
 vi.mock('../../api/request', () => ({ saveBlob: vi.fn() }))
@@ -52,6 +54,7 @@ interface DialogVm {
   load: () => Promise<void>
   save: () => Promise<void>
   onPick: (event: Event) => void
+  onImportZip: (event: Event) => Promise<void>
   removeSaved: (r: Receipt) => void
   undoRemove: (r: Receipt) => void
   removePending: (index: number) => void
@@ -62,6 +65,7 @@ interface DialogVm {
   pending: { file: File; title: string }[]
   removed: Set<number>
   dirty: boolean
+  importFailed: { file: string; reason: string }[]
 }
 
 async function open(): Promise<{ wrapper: ReturnType<typeof mount>; vm: DialogVm }> {
@@ -93,6 +97,7 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
     renameReceipt.mockReset().mockResolvedValue(undefined)
     deleteReceipt.mockReset().mockResolvedValue(undefined)
     uploadReceipt.mockReset().mockResolvedValue({})
+    importReceiptsZip.mockReset().mockResolvedValue({ success: 2, failed: [] })
     Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:mock'), writable: true })
     Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), writable: true })
   })
@@ -200,6 +205,38 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
   it('没有改动时 dirty=false，保存按钮不会误触', async () => {
     const { vm } = await open()
     expect(vm.dirty).toBe(false)
+  })
+
+  it('压缩包导入：立即生效（不走待保存），并刷新列表', async () => {
+    const { vm } = await open()
+    listReceipts.mockResolvedValueOnce([{ ...receipt }, { ...receipt, id: 12, title: '班服收据' }])
+
+    const file = new File([new Uint8Array(8)], '票据.zip', { type: 'application/zip' })
+    const input = document.createElement('input')
+    Object.defineProperty(input, 'files', { value: [file] })
+
+    await vm.onImportZip({ target: input } as unknown as Event)
+    await flushPromises()
+
+    expect(importReceiptsZip).toHaveBeenCalledWith(7, file)
+    expect(listReceipts).toHaveBeenCalledTimes(2) // 打开一次 + 导入后刷新
+    expect(vm.dirty).toBe(false)                  // 导入直接入库，不算未保存改动
+  })
+
+  it('压缩包导入的失败文件会列出来', async () => {
+    importReceiptsZip.mockResolvedValueOnce({
+      success: 1,
+      failed: [{ file: '说明.txt', reason: '只支持 jpg / png / webp 图片' }],
+    })
+    const { vm } = await open()
+    const input = document.createElement('input')
+    Object.defineProperty(input, 'files', { value: [new File([new Uint8Array(1)], 'x.zip')] })
+
+    await vm.onImportZip({ target: input } as unknown as Event)
+    await flushPromises()
+
+    expect(vm.importFailed).toHaveLength(1)
+    expect(vm.importFailed[0].file).toBe('说明.txt')
   })
 
   it('关闭有未保存改动时弹确认；取消则留在弹窗', async () => {

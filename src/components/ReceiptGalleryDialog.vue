@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deleteReceipt,
   fetchReceiptBlob,
+  importReceiptsZip,
   listReceipts,
   renameReceipt,
   uploadReceipt,
@@ -53,6 +54,10 @@ const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
+
+/** 压缩包导入的失败明细（成功的不列，弹窗里直接看图即可） */
+const importFailed = ref<{ file: string; reason: string }[]>([])
+const importing = ref(false)
 
 const loading = ref(false)
 const saving = ref(false)
@@ -244,7 +249,38 @@ async function save(): Promise<void> {
   }
 }
 
-/** 把这一笔的图片逐张下载（不再打包 zip：单笔通常 1–3 张，直接存图更直观） */
+/**
+ * 压缩包导入：这是**立即生效**的动作（后端解包后直接落库），
+ * 不进「待保存」列表，导入完刷新列表并提示。失败项列在下方，让用户知道哪几张没进来。
+ */
+async function onImportZip(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const tx = props.transaction
+  if (!tx || !file) return
+
+  importing.value = true
+  importFailed.value = []
+  try {
+    const result = await importReceiptsZip(tx.id, file)
+    importFailed.value = result.failed
+    if (result.success > 0) {
+      ElMessage.success(`已导入 ${result.success} 张票据`)
+      emit('changed')
+    }
+    if (result.failed.length > 0) {
+      ElMessage.warning(`有 ${result.failed.length} 个文件没导入，见下方清单`)
+    }
+    await load()
+  } catch {
+    // 拦截器已提示（如不是 zip、包内没有图片）
+  } finally {
+    importing.value = false
+  }
+}
+
+/** 下载这一笔的图片（逐张，不打包） */
 async function downloadImages(): Promise<void> {
   const tx = props.transaction
   if (!tx || kept.value.length === 0) return
@@ -324,6 +360,22 @@ async function downloadImages(): Promise<void> {
         <span class="add-text">添加图片</span>
         <span class="add-hint">jpg/png/webp · ≤5MB</span>
       </label>
+    </div>
+
+    <!-- 压缩包导入：立即生效，不走「待保存」 -->
+    <div class="zip-row">
+      <label class="zip-btn" :class="{ busy: importing }">
+        <input type="file" accept=".zip" hidden @change="onImportZip" />
+        📦 导入压缩包（多张图打包，立即生效）
+      </label>
+    </div>
+
+    <div v-if="importFailed.length" class="import-failed">
+      <div class="import-failed-title">没导入成功的文件：</div>
+      <div v-for="item in importFailed" :key="item.file" class="import-failed-row">
+        <span class="file">{{ item.file }}</span>
+        <span class="reason">{{ item.reason }}</span>
+      </div>
     </div>
 
     <div v-if="removed.size > 0" class="undo">
@@ -434,6 +486,47 @@ async function downloadImages(): Promise<void> {
 .add-hint {
   font-size: 11px;
   color: var(--el-text-color-placeholder);
+}
+
+.zip-row {
+  margin-top: 10px;
+}
+
+.zip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--el-color-primary);
+  cursor: pointer;
+}
+
+.zip-btn.busy {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.import-failed {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--el-color-warning-light-9);
+  font-size: 12px;
+}
+
+.import-failed-title {
+  margin-bottom: 4px;
+  color: var(--el-color-warning-dark-2);
+}
+
+.import-failed-row {
+  display: flex;
+  gap: 8px;
+  color: var(--el-text-color-regular);
+}
+
+.import-failed-row .reason {
+  color: var(--el-text-color-secondary);
 }
 
 .undo {

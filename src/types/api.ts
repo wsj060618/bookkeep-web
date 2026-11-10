@@ -315,6 +315,25 @@ export interface ImportResult {
   failed: ImportFailedRow[]
 }
 
+/** 票据导入的失败项（zip 里的相对路径） */
+export interface ReceiptImportFailed {
+  file: string
+  reason: string
+}
+
+/** 票据导入结果（单笔 zip / 账本包里的票据部分） */
+export interface ReceiptImportResult {
+  success: number
+  failed: ReceiptImportFailed[]
+}
+
+/** 账本包（zip）导入：流水与票据分开报（POST /api/transactions/import/zip） */
+export interface ZipImportResult {
+  success: number
+  failed: ImportFailedRow[]
+  receipts: ReceiptImportResult
+}
+
 /** 单本账本在公示页上的内容（一条链接可以带多本，所以是数组里的一项） */
 export interface PublicBookReport {
   bookId: number

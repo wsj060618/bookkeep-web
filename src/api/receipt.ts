@@ -1,4 +1,4 @@
-import type { Receipt } from '../types/api'
+import type { Receipt, ReceiptImportResult } from '../types/api'
 import { del, get, getFile, postForm, put, type DownloadFile } from './request'
 
 /** 流水票据（PLAN §10.9）。所有接口都要登录，bookId 由后端从 current_book_id 推导 */
@@ -47,6 +47,13 @@ export function exportBookReceipts(params: {
   endDate?: string
 }): Promise<DownloadFile> {
   return getFile('/transactions/receipts/export', { ...params })
+}
+
+/** POST /api/transactions/{id}/receipts/import —— 单笔票据打包导入（zip 里放这一笔的多张图） */
+export function importReceiptsZip(transactionId: number, file: File): Promise<ReceiptImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  return postForm<ReceiptImportResult>(`/transactions/${transactionId}/receipts/import`, form)
 }
 
 /** 公示页图片是匿名只读路径，可以直接拼给 `<img src>`（不带 token） */

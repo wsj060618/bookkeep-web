@@ -1,4 +1,11 @@
-import type { ImportResult, PageResult, Transaction, TransactionQuery, TransactionReq } from '../types/api'
+import type {
+  ImportResult,
+  PageResult,
+  Transaction,
+  TransactionQuery,
+  TransactionReq,
+  ZipImportResult,
+} from '../types/api'
 import { del, get, getFile, post, postForm, put, type DownloadFile } from './request'
 
 /** 流水接口，对应后端 TransactionController。按当前账本，不传 bookId */
@@ -54,4 +61,14 @@ export function importTransactions(file: File): Promise<ImportResult> {
   const form = new FormData()
   form.append('file', file)
   return postForm<ImportResult>('/transactions/import', form)
+}
+
+/**
+ * POST /api/transactions/import/zip —— 本系统「导出票据」生成的包（manifest + 流水.csv + 图片）。
+ * 流水与票据在同一份响应里分开报。
+ */
+export function importTransactionsZip(file: File): Promise<ZipImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  return postForm<ZipImportResult>('/transactions/import/zip', form)
 }

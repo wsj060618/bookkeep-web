@@ -6,6 +6,7 @@ import {
   deleteTransactions,
   exportTransactions,
   importTransactions,
+  importTransactionsZip,
   pageTransactions,
 } from '../api/transaction'
 import { saveBlob } from '../api/request'
@@ -15,7 +16,7 @@ import { useIsMobile } from '../composables/useIsMobile'
 import { useAuthStore } from '../stores/auth'
 import TxItem from '../components/TxItem.vue'
 import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
-import type { ImportResult, Transaction, TransactionQuery, TxType } from '../types/api'
+import type { ImportResult, Transaction, TransactionQuery, TxType, ZipImportResult } from '../types/api'
 
 /**
  * 流水页：筛选 + 分页 + 导出 + 改/删。
@@ -230,16 +231,20 @@ const importVisible = ref(false)
 const importing = ref(false)
 const pickedFile = ref<File | null>(null)
 const importResult = ref<ImportResult | null>(null)
+/** 导入压缩包时的结果（流水与票据分开） */
+const zipResult = ref<ZipImportResult | null>(null)
 
 function openImport(): void {
   pickedFile.value = null
   importResult.value = null
+  zipResult.value = null
   importVisible.value = true
 }
 
 function onPickFile(uploadFile: { raw?: File }): void {
   pickedFile.value = uploadFile.raw ?? null
   importResult.value = null
+  zipResult.value = null
 }
 
 /** 模板就是一行表头 + 一行示例，用户照着填最省事 */
@@ -252,10 +257,25 @@ function downloadTemplate(): void {
 }
 
 async function onImport(): Promise<void> {
-  if (!pickedFile.value || importing.value) return
+  const file = pickedFile.value
+  if (!file || importing.value) return
   importing.value = true
   try {
-    importResult.value = await importTransactions(pickedFile.value)
+    // .zip = 账本包（流水 + 票据一起），.csv = 只有流水
+    if (file.name.toLowerCase().endsWith('.zip')) {
+      zipResult.value = await importTransactionsZip(file)
+      const result = zipResult.value
+      ElMessage.success(`已导入 ${result.success} 笔流水、${result.receipts.success} 张票据`)
+      if (result.success > 0) {
+        shell.notifyTxChanged()
+      }
+      if (result.failed.length === 0 && result.receipts.failed.length === 0) {
+        importVisible.value = false
+      }
+      return
+    }
+
+    importResult.value = await importTransactions(file)
     const result = importResult.value
     if (result.success > 0) {
       ElMessage.success(`已导入 ${result.success} 笔`)
@@ -437,20 +457,23 @@ onMounted(() => {
 
     <el-dialog v-model="importVisible" title="导入流水" width="min(560px, 94vw)">
       <p class="import-tip">
-        只支持 <b>CSV</b>（Excel 里「另存为 → CSV UTF-8（逗号分隔）」）。列固定为：
-        日期 / 类型 / 分类 / 金额 / 备注。类型填「收入」「支出」（也认 income / expense）；
-        金额需在 <b>0.01 ~ 999,999.99</b> 之间、最多两位小数；
-        分类必须已经在当前账本里，<b>不会自动新建分类</b>。
+        支持两种文件：
+        <br />① <b>CSV</b>（只有流水）：Excel 里「另存为 → CSV UTF-8（逗号分隔）」，列固定为
+        日期 / 类型 / 分类 / 金额 / 备注；
+        <br />② <b>ZIP 账本包</b>（流水 + 票据一起）：用本系统「导出 → 票据（zip）」生成的包，
+        里面自带 manifest.csv、流水.csv 和图片，能一次还原到这个账本。
+        <br />金额需在 <b>0.01 ~ 999,999.99</b> 之间、最多两位小数；分类必须在当前账本里，
+        <b>不会自动新建分类</b>。
       </p>
 
       <div class="import-row">
         <el-upload
           :auto-upload="false"
           :show-file-list="false"
-          accept=".csv"
+          accept=".csv,.zip"
           :on-change="onPickFile"
         >
-          <el-button>选择 CSV 文件</el-button>
+          <el-button>选择 CSV 或 ZIP</el-button>
         </el-upload>
         <el-button link type="primary" @click="downloadTemplate">下载模板</el-button>
         <span v-if="pickedFile" class="import-file">{{ pickedFile.name }}</span>
@@ -471,6 +494,28 @@ onMounted(() => {
           <el-table-column prop="line" label="行号" width="80" />
           <el-table-column prop="reason" label="原因" />
         </el-table>
+      </div>
+
+      <!-- ZIP：流水与票据分开报 -->
+      <div v-if="zipResult" class="import-result">
+        <p class="import-summary">
+          成功导入 <b>{{ zipResult.success }}</b> 笔流水、
+          <b>{{ zipResult.receipts.success }}</b> 张票据
+        </p>
+        <template v-if="zipResult.failed.length">
+          <p class="import-sub">流水失败 {{ zipResult.failed.length }} 行：</p>
+          <el-table :data="zipResult.failed" size="small" max-height="180">
+            <el-table-column prop="line" label="行号" width="80" />
+            <el-table-column prop="reason" label="原因" />
+          </el-table>
+        </template>
+        <template v-if="zipResult.receipts.failed.length">
+          <p class="import-sub">票据失败 {{ zipResult.receipts.failed.length }} 个文件：</p>
+          <el-table :data="zipResult.receipts.failed" size="small" max-height="180">
+            <el-table-column prop="file" label="文件" width="180" />
+            <el-table-column prop="reason" label="原因" />
+          </el-table>
+        </template>
       </div>
 
       <template #footer>
