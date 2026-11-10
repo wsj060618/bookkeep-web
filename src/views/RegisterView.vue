@@ -29,7 +29,7 @@ const form = reactive({
   password: '',
   confirmPassword: '',
   email: '',
-  bookName: '班级账本',
+  bookName: '',
 })
 
 function validateConfirm(_rule: unknown, value: string, callback: (error?: Error) => void): void {
