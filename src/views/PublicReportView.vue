@@ -2,12 +2,12 @@
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { fetchPublicReport } from '../api/public'
-import { publicReceiptUrl } from '../api/receipt'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
+import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
 
 /** 收支对比图按需加载（ECharts 只在真要画图时才拉） */
 const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
-import type { PublicBookReport, PublicReport } from '../types/api'
+import type { PublicBookReport, PublicReport, ReportTransaction } from '../types/api'
 import { colorOf, iconOf } from '../utils/category'
 
 /**
@@ -34,6 +34,20 @@ const current = computed<PublicBookReport | null>(() => {
 
 const incomeCategories = computed(() => current.value?.incomeCategories ?? [])
 const expenseCategories = computed(() => current.value?.expenseCategories ?? [])
+
+/* 票据图集：点徽标打开，只读 */
+const galleryVisible = ref(false)
+const galleryTx = ref<ReportTransaction | null>(null)
+
+function openGallery(tx: ReportTransaction): void {
+  galleryTx.value = tx
+  galleryVisible.value = true
+}
+
+const galleryHead = computed(() => {
+  const tx = galleryTx.value
+  return tx ? `${tx.categoryName} · ${tx.transDate} · ￥${tx.amount}` : ''
+})
 
 async function load(): Promise<void> {
   if (!token.value) {
@@ -186,30 +200,16 @@ onMounted(load)
               <div class="tx-line">
                 <span class="tx-note">{{ tx.note || '—' }}</span>
                 <span class="tx-tail">
-                  <!-- 票据徽标：和管理端一样，点开列出票据链接（有 10 张也不会撑开行高） -->
-                  <el-popover
+                  <!-- 和管理端同一个徽标：点开看票据图集（只读） -->
+                  <button
                     v-if="tx.receiptCount > 0"
-                    placement="top"
-                    trigger="click"
-                    :width="200"
-                    popper-class="receipt-pop"
+                    type="button"
+                    class="tx-receipt"
+                    :title="`${tx.receiptCount} 张票据`"
+                    @click="openGallery(tx)"
                   >
-                    <template #reference>
-                      <button type="button" class="tx-receipt" :title="`${tx.receiptCount} 张票据`">
-                        📎 {{ tx.receiptCount }}
-                      </button>
-                    </template>
-                    <div class="receipt-links">
-                      <a
-                        v-for="receipt in tx.receipts"
-                        :key="receipt.id"
-                        class="receipt-link"
-                        :href="publicReceiptUrl(token, receipt.id)"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >{{ receipt.title }}</a>
-                    </div>
-                  </el-popover>
+                    📎 {{ tx.receiptCount }}
+                  </button>
                   <span class="tx-date">{{ tx.transDate }} · 结余 ￥{{ tx.balanceAfter }}</span>
                 </span>
               </div>
@@ -223,6 +223,14 @@ onMounted(load)
         <template v-if="report?.expiresAt">（本链接有效期至 {{ report.expiresAt }}）</template>
       </footer>
     </template>
+
+    <ReceiptGalleryDialog
+      v-model="galleryVisible"
+      readonly
+      :share-token="token"
+      :public-receipts="galleryTx?.receipts ?? []"
+      :head-text="galleryHead"
+    />
   </div>
 </template>
 
@@ -451,26 +459,6 @@ onMounted(load)
 .tx-receipt:hover {
   background: var(--el-color-primary-light-9);
   color: var(--el-color-primary);
-}
-
-/* 弹层里的票据链接（popper 挂在 body 上，样式不能 scoped） */
-:global(.receipt-links) {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-:global(.receipt-link) {
-  font-size: 12px;
-  color: var(--el-color-primary);
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-:global(.receipt-link:hover) {
-  text-decoration: underline;
 }
 
 .footer {

@@ -10,6 +10,7 @@ import {
   renameReceipt,
   uploadReceipt,
 } from '../api/receipt'
+import { publicReceiptUrl } from '../api/receipt'
 import { saveBlob } from '../api/request'
 import {
   RECEIPT_ACCEPT,
@@ -18,22 +19,22 @@ import {
   formatSize,
   validateReceiptFile,
 } from '../utils/receipt'
-import type { Receipt, Transaction } from '../types/api'
+import type { PublicReceipt, Receipt, Transaction } from '../types/api'
 
 /**
  * 一笔流水的票据图集：看缩略图、改名、删除、再加几张、把这一笔的图下载下来。
- *
- * <p>**改动是「草稿」语义**：新增的图先本地预览、改标题、删除都只改本地状态，
- * 点「保存」才统一提交（删除 → 改名 → 上传）。直接关掉弹窗等于放弃，什么都不会写库——
- * 之前是选完图立刻上传，用户点 × 关掉后发现图已经加上了，这不符合直觉。
- *
- * <p>登录态接口不能用 `<img src>` 直链（浏览器不会带 Authorization），所以每张图先取 Blob
- * 再转 objectURL；关弹窗时统一 revoke。注意 nginx 的 CSP `img-src` 必须含 `blob:`。
+ * <p>改动是草稿语义，点保存才提交。
+ * <p>`readonly` + `shareToken` 用于公示页：只显示，不给改名/删除/上传，图片直接用匿名地址。
  */
 const props = defineProps<{
   modelValue: boolean
-  /** null = 没选中任何流水 */
-  transaction: Transaction | null
+  /** 管理端传当前流水；公示页不传 */
+  transaction?: Transaction | null
+  readonly?: boolean
+  shareToken?: string
+  publicReceipts?: PublicReceipt[]
+  /** 弹窗顶部那行说明 */
+  headText?: string
 }>()
 
 const emit = defineEmits<{
@@ -88,6 +89,24 @@ function resetState(): void {
 }
 
 async function load(): Promise<void> {
+  if (props.readonly) {
+    resetState()
+    const items = props.publicReceipts ?? []
+    receipts.value = items.map((r) => ({
+      id: r.id,
+      title: r.title,
+      originalName: null,
+      sizeBytes: 0,
+      createdAt: '',
+    }))
+    items.forEach((r) => {
+      titles[r.id] = r.title
+      // 公示页是匿名接口，直接当 img src 用，不用取 blob
+      previews[r.id] = publicReceiptUrl(props.shareToken ?? '', r.id)
+    })
+    return
+  }
+
   const tx = props.transaction
   if (!tx) return
   loading.value = true
@@ -97,7 +116,7 @@ async function load(): Promise<void> {
     receipts.value.forEach((r) => {
       titles[r.id] = r.title
     })
-    // 逐张取图：失败的那张留占位，不影响其他张
+    // 登录态接口要带 token，只能先取 blob 再转 objectURL
     await Promise.all(
       receipts.value.map(async (r) => {
         try {
@@ -300,9 +319,11 @@ async function exportZip(): Promise<void> {
   >
     <div class="gallery-head">
       <span class="gallery-tip">
-        {{ transaction?.categoryName }} · {{ transaction?.transDate }} · ￥{{ transaction?.amount }}
+        {{ headText ?? `${transaction?.categoryName} · ${transaction?.transDate} · ￥${transaction?.amount}` }}
       </span>
-      <span class="gallery-limit">{{ kept.length + pending.length }} / {{ RECEIPT_MAX_PER_TRANSACTION }}</span>
+      <span v-if="!readonly" class="gallery-limit">
+        {{ kept.length + pending.length }} / {{ RECEIPT_MAX_PER_TRANSACTION }}
+      </span>
     </div>
 
     <div v-loading="loading" class="gallery">
@@ -324,10 +345,14 @@ async function exportZip(): Promise<void> {
         />
         <div v-else class="thumb thumb-empty">图片加载失败</div>
 
-        <el-input v-model="titles[receipt.id]" size="small" maxlength="30" class="title-input" />
+        <el-input v-if="!readonly" v-model="titles[receipt.id]" size="small" maxlength="30" class="title-input" />
+        <div v-else class="title-text">{{ receipt.title }}</div>
         <div class="meta">
-          <span>{{ formatSize(receipt.sizeBytes) }}</span>
-          <el-button text size="small" type="danger" @click="removeSaved(receipt)">删除</el-button>
+          <span v-if="!readonly">{{ formatSize(receipt.sizeBytes) }}</span>
+          <span v-else />
+          <el-button v-if="!readonly" text size="small" type="danger" @click="removeSaved(receipt)">
+            删除
+          </el-button>
         </div>
       </div>
 
@@ -341,7 +366,7 @@ async function exportZip(): Promise<void> {
         </div>
       </div>
 
-      <label v-if="canAddMore" class="add">
+      <label v-if="!readonly && canAddMore" class="add">
         <input type="file" :accept="RECEIPT_ACCEPT" multiple hidden @change="onPick" />
         <span class="add-plus">+</span>
         <span class="add-text">添加图片</span>
@@ -350,7 +375,7 @@ async function exportZip(): Promise<void> {
     </div>
 
     <!-- 压缩包导入：立即生效，不走「待保存」 -->
-    <div class="zip-row">
+    <div v-if="!readonly" class="zip-row">
       <label class="zip-btn" :class="{ busy: importing }">
         <input type="file" accept=".zip" hidden @change="onImportZip" />
         📦 导入压缩包（多张图打包，立即生效）
@@ -381,8 +406,11 @@ async function exportZip(): Promise<void> {
     <div v-if="kept.length + pending.length === 0 && !loading" class="empty">这笔流水还没有票据</div>
 
     <template #footer>
-      <el-button :disabled="kept.length === 0" @click="exportZip">导出压缩包</el-button>
-      <el-button type="primary" :loading="saving" :disabled="!dirty" @click="save">保存</el-button>
+      <template v-if="!readonly">
+        <el-button :disabled="kept.length === 0" @click="exportZip">导出压缩包</el-button>
+        <el-button type="primary" :loading="saving" :disabled="!dirty" @click="save">保存</el-button>
+      </template>
+      <el-button v-else @click="visible = false">关闭</el-button>
     </template>
   </el-dialog>
 </template>
@@ -440,6 +468,13 @@ async function exportZip(): Promise<void> {
 
 .title-input :deep(.el-input__inner) {
   font-size: 12px;
+}
+
+.title-text {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta {

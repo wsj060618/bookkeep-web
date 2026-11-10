@@ -27,6 +27,7 @@ vi.mock('../../api/receipt', () => ({
   uploadReceipt: (...args: unknown[]) => uploadReceipt(...args),
   importReceiptsZip: (...args: unknown[]) => importReceiptsZip(...args),
   exportTransactionReceipts: (...args: unknown[]) => exportTransactionReceipts(...args),
+  publicReceiptUrl: (token: string, id: number) => `/api/public/report/${token}/receipts/${id}`,
 }))
 
 vi.mock('../../api/request', () => ({ saveBlob: vi.fn() }))
@@ -68,6 +69,8 @@ interface DialogVm {
   removed: Set<number>
   dirty: boolean
   importFailed: { file: string; reason: string }[]
+  /** receiptId → 图片地址（管理端是 objectURL，公示页是匿名直链） */
+  previews: Record<number, string>
 }
 
 async function open(): Promise<{ wrapper: ReturnType<typeof mount>; vm: DialogVm }> {
@@ -249,5 +252,38 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
 
     // before-close 是模板里的内联函数，这里直接验证 dirty 的状态语义
     expect(vm.dirty).toBe(true)
+  })
+
+  it('只读模式（公示页）：不调接口、图片走匿名直链、没有保存/删除', async () => {
+    const wrapper = mount(ReceiptGalleryDialog, {
+      props: {
+        modelValue: false,
+        readonly: true,
+        shareToken: 'tk123',
+        publicReceipts: [{ id: 5, title: '超市小票' }],
+        headText: '班会物资 · 2026-11-10 · ￥11.00',
+      },
+      global: { plugins: [ElementPlus] },
+    })
+    await wrapper.setProps({ modelValue: true })
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as DialogVm
+
+    // 不碰任何登录态接口
+    expect(listReceipts).not.toHaveBeenCalled()
+    expect(fetchReceiptBlob).not.toHaveBeenCalled()
+
+    // 数据来自上级传入，图片直接是匿名地址
+    expect(vm.receipts).toHaveLength(1)
+    expect(vm.titles[5]).toBe('超市小票')
+    expect(vm.previews[5]).toBe('/api/public/report/tk123/receipts/5')
+    expect(vm.kept).toHaveLength(1)
+    // 只读：没有任何待提交的改动
+    expect(vm.pending).toHaveLength(0)
+    expect(vm.removed.size).toBe(0)
+    expect(vm.dirty).toBe(false)
+
+    wrapper.unmount()
   })
 })
