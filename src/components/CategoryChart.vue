@@ -53,8 +53,8 @@ function barOption(): EChartsCoreOption {
   return {
     // 动画显式写出来（ECharts 默认就有，以前被 render() 里的 resize() 顶掉了）
     animation: true,
-    animationDuration: 700,
-    animationDurationUpdate: 450,
+    animationDuration: 1000,
+    animationDurationUpdate: 600,
     animationEasing: 'cubicOut',
     animationEasingUpdate: 'cubicOut',
     grid: { left: 8, right: 8, top: 28, bottom: 0, containLabel: true },
@@ -119,8 +119,8 @@ function pieOption(): EChartsCoreOption {
   return {
     // 动画显式写出来（ECharts 默认就有，以前被 render() 里的 resize() 顶掉了）
     animation: true,
-    animationDuration: 700,
-    animationDurationUpdate: 450,
+    animationDuration: 1000,
+    animationDurationUpdate: 600,
     animationEasing: 'cubicOut',
     animationEasingUpdate: 'cubicOut',
     tooltip: {

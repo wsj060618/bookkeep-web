@@ -45,8 +45,8 @@ function buildOption(): EChartsCoreOption {
     return {
       // 动画显式写出来：ECharts 默认就有，但以前 render() 里紧跟一句 resize() 会把它顶掉
       animation: true,
-      animationDuration: 700,
-      animationDurationUpdate: 450,
+      animationDuration: 1000,
+      animationDurationUpdate: 600,
       animationEasing: 'cubicOut',
       animationEasingUpdate: 'cubicOut',
       tooltip: {
@@ -80,8 +80,8 @@ function buildOption(): EChartsCoreOption {
 
   return {
     animation: true,
-    animationDuration: 700,
-    animationDurationUpdate: 450,
+    animationDuration: 1000,
+    animationDurationUpdate: 600,
     animationEasing: 'cubicOut',
     animationEasingUpdate: 'cubicOut',
     grid: { left: 8, right: 16, top: 28, bottom: 8, containLabel: true },
