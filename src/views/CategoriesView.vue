@@ -49,6 +49,12 @@ const selectedIsBuiltin = computed(() => selectedTemplate.value?.builtin ?? true
 
 const draftItems = ref<TemplateItemInput[]>([])
 const saving = ref(false)
+/**
+ * 勾选状态：**必须声明在下面那个 immediate watcher 之前**，
+ * 否则 watcher 在 setup 里同步执行时会触发 TDZ（Cannot access 'selectedKeys' before initialization），
+ * 整个页面 setup 抛错——表现出来就是「页面状态不对/提示乱跳」。
+ */
+const selectedKeys = ref<string[]>([])
 
 function syncDraft(): void {
   const template = selectedTemplate.value
@@ -85,36 +91,36 @@ const dirty = computed(() => {
   return before.length !== after.length || before.some((value, index) => value !== after[index])
 })
 
-/** 切模板 / 保存完：把草稿对齐到选中模板 */
-const lastTemplateId = ref<number>(BUILTIN_ID)
+/** 选中模板变了（含首次加载）→ 草稿重新对齐；这是唯一的数据来源，避免草稿残留上一套模板 */
 watch(
   () => selectedTemplate.value?.id,
-  (id) => {
-    lastTemplateId.value = id ?? BUILTIN_ID
+  () => {
     syncDraft()
     selectedKeys.value = []
   },
   { immediate: true },
 )
 
-async function onTemplateChange(): Promise<void> {
-  if (!dirty.value) {
-    syncDraft()
-    return
+/**
+ * 切换模板。**下拉用 `:model-value` 单向绑定**（不是 v-model），由这里决定到底要不要切：
+ * 有未保存改动时先确认，选「继续编辑」就**真的不切**（不写 templateId，下拉自动回到原值）。
+ * <p>之前用 v-model + watch，选完确认框时模型已经改掉了，「继续编辑」反而什么都没拦住。
+ */
+async function onTemplateChange(next: number): Promise<void> {
+  if (next === templateId.value) return
+  if (dirty.value) {
+    const discard = await ElMessageBox.confirm(
+      '当前模板还有没保存的改动，切换后这些改动会丢失。',
+      '放弃改动？',
+      { type: 'warning', confirmButtonText: '放弃并切换', cancelButtonText: '继续编辑' },
+    )
+      .then(() => true)
+      .catch(() => false)
+    if (!discard) return
   }
-  const discard = await ElMessageBox.confirm(
-    '当前模板还有没保存的改动，切换后这些改动会丢失。',
-    '放弃改动？',
-    { type: 'warning', confirmButtonText: '放弃', cancelButtonText: '继续编辑' },
-  )
-    .then(() => true)
-    .catch(() => false)
-  if (discard) {
-    syncDraft()
-    lastTemplateId.value = templateId.value
-  } else {
-    templateId.value = lastTemplateId.value
-  }
+  templateId.value = next
+  syncDraft()
+  selectedKeys.value = []
 }
 
 /* ---------- 条目增删改（全部落在草稿上） ---------- */
@@ -227,8 +233,6 @@ async function onDelete(item: TemplateItemInput): Promise<void> {
 
 /* ---------- 勾选与批量删除（同样是草稿） ---------- */
 
-const selectedKeys = ref<string[]>([])
-
 const allSelected = computed(
   () => draftItems.value.length > 0 && selectedKeys.value.length === draftItems.value.length,
 )
@@ -238,6 +242,12 @@ const someSelected = computed(
 
 function toggleAll(checked: boolean | string | number): void {
   selectedKeys.value = checked ? draftItems.value.map(itemKey) : []
+}
+
+/** 单行勾选：selectedKeys 是普通数组，用 includes 驱动复选框（不是 el-checkbox-group） */
+function toggleKey(key: string, checked: boolean | string | number): void {
+  const rest = selectedKeys.value.filter((value) => value !== key)
+  selectedKeys.value = checked ? [...rest, key] : rest
 }
 
 function groupKeys(type: TxType): string[] {
@@ -430,7 +440,7 @@ onMounted(async () => {
 
     <section class="tpl-card">
       <div class="tpl-row">
-        <el-select v-model="templateId" class="tpl-select" placeholder="选择模板" @change="onTemplateChange">
+        <el-select :model-value="templateId" class="tpl-select" placeholder="选择模板" @change="onTemplateChange">
           <el-option
             v-for="t in templates"
             :key="t.id"
@@ -517,9 +527,9 @@ onMounted(async () => {
 
         <div v-for="item in byType(group.type)" :key="itemKey(item)" class="cat-row">
           <el-checkbox
-            v-model="selectedKeys"
-            :value="itemKey(item)"
+            :model-value="selectedKeys.includes(itemKey(item))"
             class="row-check"
+            @change="(checked: boolean | string | number) => toggleKey(itemKey(item), checked)"
           />
           <span class="cat-icon">{{ iconOf(item.icon) }}</span>
           <span class="cat-name">{{ item.name }}</span>
