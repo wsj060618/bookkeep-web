@@ -168,6 +168,18 @@ function byType(type: TxType): Category[] {
 const selectedCats = ref<number[]>([])
 const batchBusy = ref(false)
 
+/** 顶部「全选」：支出 + 收入一起选 */
+const allCatsSelected = computed(
+  () => list.value.length > 0 && selectedCats.value.length === list.value.length,
+)
+const someCatsSelected = computed(
+  () => selectedCats.value.length > 0 && selectedCats.value.length < list.value.length,
+)
+
+function toggleAllCats(checked: boolean | string | number): void {
+  selectedCats.value = checked ? list.value.map((c) => c.id) : []
+}
+
 /** 某一组（支出 / 收入）的勾选状态与全选 */
 function groupIds(type: TxType): number[] {
   return byType(type).map((c) => c.id)
@@ -355,6 +367,15 @@ onMounted(async () => {
     </section>
 
     <section class="batch-bar">
+      <!-- 顶部是「全选全部」；每张卡片标题栏还有只针对本组的全选 -->
+      <el-checkbox
+        :model-value="allCatsSelected"
+        :indeterminate="someCatsSelected"
+        :disabled="archived || list.length === 0"
+        @change="toggleAllCats"
+      >
+        全选
+      </el-checkbox>
       <span class="batch-count">已选 {{ selectedCats.length }} / {{ list.length }} 个</span>
       <el-button
         type="danger"
