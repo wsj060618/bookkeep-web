@@ -62,12 +62,26 @@ function syncDraft(): void {
     : []
 }
 
-/** 有改动才允许保存（比名称与方向的序列，够用且不用深比较） */
+/**
+ * 有改动才允许保存。
+ * <p>比较时**必须归一化**：后端可能返回 null / 缺字段 / 空字符串，顺序也可能因为
+ * sortOrder 与插入顺序不同而错位——之前直接拼字符串比较，导致「什么都没改也提示有改动」。
+ * 这里统一：type + 去空格的名称 + icon/color 缺省为空串，并按同样顺序做多重集比较。
+ */
+function signature(item: TemplateItemInput): string {
+  return [
+    item.type,
+    (item.name ?? '').trim(),
+    (item.icon ?? '').trim(),
+    (item.color ?? '').trim(),
+  ].join('|')
+}
+
 const dirty = computed(() => {
   const template = selectedTemplate.value
   if (!template) return false
-  const before = template.items.map((item) => `${item.type}:${item.name}:${item.icon}:${item.color}`)
-  const after = draftItems.value.map((item) => `${item.type}:${item.name}:${item.icon}:${item.color}`)
+  const before = template.items.map(signature).sort()
+  const after = draftItems.value.map(signature).sort()
   return before.length !== after.length || before.some((value, index) => value !== after[index])
 })
 
@@ -118,24 +132,53 @@ const editingItem = ref<TemplateItemInput | null>(null)
 const formType = ref<TxType>('expense')
 const formInitial = ref<{ name: string; icon: string | null; color: string | null } | null>(null)
 
-function guardBuiltin(): boolean {
-  if (selectedIsBuiltin.value) {
-    ElMessage.warning('内置模板不能改；先「存为模板」复制一份再编辑')
+/**
+ * 内置模板是**代码里的常量**（`CategoryPresets.classCategories()`，id=0 不入库），
+ * 所以没有可更新的行。想改它就自动复制一份到账号下（copy-on-write），再继续编辑。
+ * <p>为什么不做成「直接改内置」：模板是账号级的，内置对所有账号是同一个常量；
+ * 落库就意味着每个账号都要有一份副本，那不如第一次编辑时复制，语义最清楚。
+ */
+async function ensureEditableTemplate(): Promise<boolean> {
+  if (!selectedIsBuiltin.value) return true
+  const confirmed = await ElMessageBox.confirm(
+    '内置模板是代码里的固定模板，不能直接修改。要复制一份到你的账号下再编辑吗？',
+    '内置模板只读',
+    { confirmButtonText: '复制并编辑', cancelButtonText: '取消' },
+  )
+    .then(() => true)
+    .catch(() => false)
+  if (!confirmed) return false
+
+  // 名称去重：班级班费（副本）/（副本2）…
+  const base = `${selectedTemplate.value?.name ?? '模板'}（副本）`
+  const taken = new Set(templates.value.map((t) => t.name))
+  let name = base
+  for (let i = 2; taken.has(name); i++) {
+    name = `${base}${i}`
+  }
+  try {
+    const clone = await createTemplate(name, draftItems.value.map((item) => ({ ...item })))
+    await loadTemplates()
+    templateId.value = clone.id
+    syncDraft()
+    ElMessage.success(`已复制为「${clone.name}」，现在可以改了`)
+    return true
+  } catch {
+    // 重名等 400 已由拦截器提示
     return false
   }
-  return true
 }
 
-function openCreate(type: TxType): void {
-  if (!guardBuiltin()) return
+async function openCreate(type: TxType): Promise<void> {
+  if (!(await ensureEditableTemplate())) return
   editingItem.value = null
   formType.value = type
   formInitial.value = null
   dialogVisible.value = true
 }
 
-function openEdit(item: TemplateItemInput): void {
-  if (!guardBuiltin()) return
+async function openEdit(item: TemplateItemInput): Promise<void> {
+  if (!(await ensureEditableTemplate())) return
   editingItem.value = item
   formType.value = item.type
   formInitial.value = { name: item.name, icon: item.icon, color: item.color }
@@ -170,7 +213,7 @@ function onItemSubmit(payload: { name: string; type: TxType; icon: string; color
 }
 
 async function onDelete(item: TemplateItemInput): Promise<void> {
-  if (!guardBuiltin()) return
+  if (!(await ensureEditableTemplate())) return
   const confirmed = await ElMessageBox.confirm(
     `从模板里删掉「${item.name}」？（只改模板，不影响已有账本）`,
     '删除分类',
@@ -219,7 +262,7 @@ function toggleGroup(type: TxType, checked: boolean | string | number): void {
 }
 
 async function onBatchDelete(): Promise<void> {
-  if (!guardBuiltin()) return
+  if (!(await ensureEditableTemplate())) return
   if (!selectedKeys.value.length) return
   const count = selectedKeys.value.length
   const confirmed = await ElMessageBox.confirm(
@@ -260,6 +303,7 @@ async function onSave(): Promise<void> {
 
 /* ---------- 模板本身：新建 / 存为 / 重命名 / 删除 ---------- */
 
+/** 模板列表变更后（例如别处改名/删模板），若本地没有未保存改动就把草稿对齐到最新 */
 async function loadTemplates(): Promise<void> {
   try {
     templates.value = await listTemplates()
@@ -269,6 +313,9 @@ async function loadTemplates(): Promise<void> {
   // 模板被删掉后可能留着旧 id：不在列表里就回落到内置
   if (!templates.value.some((t) => t.id === templateId.value)) {
     templateId.value = BUILTIN_ID
+  }
+  if (!dirty.value) {
+    syncDraft()
   }
 }
 
@@ -401,7 +448,9 @@ onMounted(async () => {
       </div>
 
       <p class="tpl-tip">
-        内置模板只读；想改就先「存为模板」复制一份。切换模板时若有未保存的改动会提示你确认。
+        内置「班级班费」是代码里的固定模板（id=0，库里没有这一行），所以直接点「编辑 / 新增 / 删除」时会先
+        <b>自动复制一份</b>到你的账号下再改；也可以手动「存为模板」。
+        切换模板时若有未保存的改动会提示你确认。
       </p>
     </section>
 
@@ -409,7 +458,7 @@ onMounted(async () => {
       <el-checkbox
         :model-value="allSelected"
         :indeterminate="someSelected"
-        :disabled="selectedIsBuiltin || draftItems.length === 0"
+        :disabled="draftItems.length === 0"
         @change="toggleAll"
       >
         全选
@@ -419,7 +468,7 @@ onMounted(async () => {
         type="danger"
         plain
         size="small"
-        :disabled="selectedIsBuiltin || !selectedKeys.length"
+        :disabled="!selectedKeys.length"
         @click="onBatchDelete"
       >
         删除所选
@@ -429,7 +478,7 @@ onMounted(async () => {
       <el-button
         type="primary"
         size="small"
-        :disabled="selectedIsBuiltin || !dirty"
+        :disabled="!dirty"
         :loading="saving"
         @click="onSave"
       >
@@ -443,7 +492,7 @@ onMounted(async () => {
           <el-checkbox
             :model-value="groupAllSelected(group.type)"
             :indeterminate="groupSomeSelected(group.type)"
-            :disabled="selectedIsBuiltin || byType(group.type).length === 0"
+            :disabled="byType(group.type).length === 0"
             @change="(checked: boolean | string | number) => toggleGroup(group.type, checked)"
           >
             全选
@@ -455,7 +504,6 @@ onMounted(async () => {
           size="small"
           type="primary"
           plain
-          :disabled="selectedIsBuiltin"
           @click="openCreate(group.type)"
         >
           ＋ 新增{{ group.short }}
@@ -472,18 +520,16 @@ onMounted(async () => {
             v-model="selectedKeys"
             :value="itemKey(item)"
             class="row-check"
-            :disabled="selectedIsBuiltin"
           />
           <span class="cat-icon">{{ iconOf(item.icon) }}</span>
           <span class="cat-name">{{ item.name }}</span>
           <span class="cat-color" :style="{ background: colorOf(item.color) }" />
           <span class="cat-ops">
-            <el-button text size="small" :disabled="selectedIsBuiltin" @click="openEdit(item)">编辑</el-button>
+            <el-button text size="small" @click="openEdit(item)">编辑</el-button>
             <el-button
               text
               size="small"
               type="danger"
-              :disabled="selectedIsBuiltin"
               @click="onDelete(item)"
             >
               删除
