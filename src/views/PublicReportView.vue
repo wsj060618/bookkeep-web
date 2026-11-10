@@ -79,19 +79,9 @@ onMounted(load)
     <template v-else>
       <section v-loading="loading" class="card">
         <div class="card-head">
-          <!-- 一条链接带多本账本：≤4 本用胶囊切换，更多改用下拉，两者都只占一行 -->
-          <el-radio-group
-            v-if="books.length > 1 && books.length <= 4"
-            v-model="activeBookId"
-            size="small"
-            class="book-switch"
-          >
-            <el-radio-button v-for="b in books" :key="b.bookId" :value="b.bookId">
-              {{ b.bookName }}
-            </el-radio-button>
-          </el-radio-group>
+          <!-- 一条链接带多本账本：统一用下拉切换，只占一行，账本多少都一样 -->
           <el-select
-            v-else-if="books.length > 4"
+            v-if="books.length > 1"
             v-model="activeBookId"
             size="small"
             class="book-select"
@@ -225,15 +215,9 @@ onMounted(load)
   margin-bottom: 12px;
 }
 
-/* 多本账本时的切换：胶囊按钮，放不下就换行，不额外占一块空白区 */
-.book-switch {
-  flex-wrap: wrap;
-  row-gap: 4px;
-}
-
-/* 账本超过 4 本改用下拉：一行放得下，不用把按钮堆成好几排 */
+/* 账本切换：统一用下拉，一行放得下，账本多少都不挤 */
 .book-select {
-  width: 180px;
+  width: 200px;
   max-width: 100%;
 }
 
