@@ -607,7 +607,7 @@ onMounted(() => {
 .tx-list {
   min-height: 200px;
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .pager {
