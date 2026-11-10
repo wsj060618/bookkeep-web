@@ -182,12 +182,12 @@ function onSizeChange(): void {
   void loadList()
 }
 
-async function onExport(format: 'csv' | 'xlsx' | 'receipts'): Promise<void> {
+async function onExport(format: 'csv' | 'xlsx' | 'zip' | 'receipts'): Promise<void> {
   if (exporting.value) return
   exporting.value = true
   try {
     if (format === 'receipts') {
-      // 票据打包：和流水导出同一套日期区间；没有票据时后端回 400 文案
+      // 票据导出：**只要图片**的 zip（账本/月份分层），和流水导出共用同一套日期区间
       const params = dateRange.value
         ? { startDate: dateRange.value[0], endDate: dateRange.value[1] }
         : {}
@@ -396,7 +396,8 @@ onMounted(() => {
             <el-dropdown-menu>
               <el-dropdown-item command="csv">CSV（通用）</el-dropdown-item>
               <el-dropdown-item command="xlsx">Excel（带统计图）</el-dropdown-item>
-              <el-dropdown-item command="receipts" divided>票据（zip，按账本/月份）</el-dropdown-item>
+              <el-dropdown-item command="zip" divided>账本导出（zip：流水 + 票据，可再导入）</el-dropdown-item>
+              <el-dropdown-item command="receipts">票据（zip：只要图片）</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -460,7 +461,7 @@ onMounted(() => {
         支持两种文件：
         <br />① <b>CSV</b>（只有流水）：Excel 里「另存为 → CSV UTF-8（逗号分隔）」，列固定为
         日期 / 类型 / 分类 / 金额 / 备注；
-        <br />② <b>ZIP 账本包</b>（流水 + 票据一起）：用本系统「导出 → 票据（zip）」生成的包，
+        <br />② <b>ZIP 账本包</b>（流水 + 票据一起）：用本系统「导出 → 账本导出（zip）」生成的包，
         里面自带 manifest.csv、流水.csv 和图片，能一次还原到这个账本。
         <br />金额需在 <b>0.01 ~ 999,999.99</b> 之间、最多两位小数；分类必须在当前账本里，
         <b>不会自动新建分类</b>。

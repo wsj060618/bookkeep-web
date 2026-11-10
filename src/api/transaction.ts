@@ -41,14 +41,15 @@ export function deleteTransactions(ids: number[]): Promise<number> {
 }
 
 /**
- * GET /api/transactions/export —— 成功是文件流（CSV / xlsx），失败仍是 200 + JSON 信封。
- * `format=xlsx` 是带汇总与分类柱状图的真 Excel；默认 csv。
+ * GET /api/transactions/export —— 成功是文件流（CSV / xlsx / zip），失败仍是 200 + JSON 信封。
+ * `format=xlsx` 是带汇总与分类柱状图的真 Excel；`format=zip` 是**账本导出包**
+ * （`流水.csv` + `manifest.csv` + 票据图片，可再导入）；默认 csv。
  * 调用方拿到的是 {blob, filename}，用 request.ts 的 saveBlob 落盘。
  */
 export function exportTransactions(params: {
   startDate?: string
   endDate?: string
-  format?: 'csv' | 'xlsx'
+  format?: 'csv' | 'xlsx' | 'zip'
 }): Promise<DownloadFile> {
   return getFile('/transactions/export', { ...params })
 }
@@ -64,7 +65,7 @@ export function importTransactions(file: File): Promise<ImportResult> {
 }
 
 /**
- * POST /api/transactions/import/zip —— 本系统「导出票据」生成的包（manifest + 流水.csv + 图片）。
+ * POST /api/transactions/import/zip —— 本系统「账本导出」生成的包（manifest + 流水.csv + 图片）。
  * 流水与票据在同一份响应里分开报。
  */
 export function importTransactionsZip(file: File): Promise<ZipImportResult> {

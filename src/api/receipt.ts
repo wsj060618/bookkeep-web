@@ -41,7 +41,7 @@ export async function fetchReceiptBlob(transactionId: number, receiptId: number)
   return file.blob
 }
 
-/** GET /api/transactions/receipts/export —— 整个账本（可带区间）打成 zip */
+/** GET /api/transactions/receipts/export —— 整个账本（可带区间）的票据打成 zip，**只有图片** */
 export function exportBookReceipts(params: {
   startDate?: string
   endDate?: string
@@ -49,7 +49,7 @@ export function exportBookReceipts(params: {
   return getFile('/transactions/receipts/export', { ...params })
 }
 
-/** GET /api/transactions/{id}/receipts/export —— 这一笔打成 zip（图片都在一个「图片/」文件夹里） */
+/** GET /api/transactions/{id}/receipts/export —— 这一笔打成 zip（只有图片，全在「图片/」文件夹里） */
 export function exportTransactionReceipts(transactionId: number): Promise<DownloadFile> {
   return getFile(`/transactions/${transactionId}/receipts/export`)
 }
