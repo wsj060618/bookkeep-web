@@ -43,6 +43,12 @@ const items = computed(() => [
 function buildOption(): EChartsCoreOption {
   if (props.type === 'donut') {
     return {
+      // 动画显式写出来：ECharts 默认就有，但以前 render() 里紧跟一句 resize() 会把它顶掉
+      animation: true,
+      animationDuration: 700,
+      animationDurationUpdate: 450,
+      animationEasing: 'cubicOut',
+      animationEasingUpdate: 'cubicOut',
       tooltip: {
         trigger: 'item',
         formatter: (params: unknown) => {
@@ -73,6 +79,11 @@ function buildOption(): EChartsCoreOption {
   }
 
   return {
+    animation: true,
+    animationDuration: 700,
+    animationDurationUpdate: 450,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     grid: { left: 8, right: 16, top: 28, bottom: 8, containLabel: true },
     tooltip: {
       trigger: 'axis',
@@ -114,17 +125,40 @@ function buildOption(): EChartsCoreOption {
   }
 }
 
+/** 上次画的图形：只有柱↔环切换时才整体替换选项，其余情况合并，数值变化才有补间动画 */
+let lastType: string | null = null
+
 function render(): void {
   if (!el.value) return
   if (!chart) chart = echarts.init(el.value)
-  chart.setOption(buildOption(), true)
-  chart.resize()
+  // 这里**不能**紧跟 chart.resize()：它会让 ECharts 立刻做一次无动画的布局更新，
+  // 首屏/切月那次柱子长出来的动画就被顶掉了（容器尺寸交给 ResizeObserver）
+  chart.setOption(buildOption(), lastType !== null && lastType !== props.type)
+  lastType = props.type
+}
+
+/** 上一次的容器尺寸：ResizeObserver 观察开始时就会立刻回调一次，那次必须跳过（见下） */
+let lastSize = ''
+
+function sizeOf(el: HTMLElement): string {
+  return `${Math.round(el.clientWidth)}x${Math.round(el.clientHeight)}`
 }
 
 onMounted(() => {
   render()
-  observer = new ResizeObserver(() => chart?.resize())
-  if (el.value) observer.observe(el.value)
+  observer = new ResizeObserver(() => {
+    if (!el.value) return
+    const size = sizeOf(el.value)
+    // 首次回调尺寸没变，直接 return：resize() 内部是**关掉动画**的一次布局更新，
+    // 紧跟 setOption 调用会把柱子长出来的入场动画顶掉
+    if (size === lastSize) return
+    lastSize = size
+    chart?.resize()
+  })
+  if (el.value) {
+    lastSize = sizeOf(el.value)
+    observer.observe(el.value)
+  }
 })
 
 watch(() => [props.income, props.expense, props.balance, props.type], render)

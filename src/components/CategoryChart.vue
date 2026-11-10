@@ -51,6 +51,12 @@ const rotateLabels = computed(() => props.items.length > 5)
 function barOption(): EChartsCoreOption {
   const count = props.items.length
   return {
+    // 动画显式写出来（ECharts 默认就有，以前被 render() 里的 resize() 顶掉了）
+    animation: true,
+    animationDuration: 700,
+    animationDurationUpdate: 450,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     grid: { left: 8, right: 8, top: 28, bottom: 0, containLabel: true },
     tooltip: {
       trigger: 'axis',
@@ -111,6 +117,12 @@ function barOption(): EChartsCoreOption {
 function pieOption(): EChartsCoreOption {
   const donut = props.type === 'donut'
   return {
+    // 动画显式写出来（ECharts 默认就有，以前被 render() 里的 resize() 顶掉了）
+    animation: true,
+    animationDuration: 700,
+    animationDurationUpdate: 450,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     tooltip: {
       trigger: 'item',
       formatter: (params: unknown) => {
@@ -168,19 +180,41 @@ function buildOption(): EChartsCoreOption {
   return props.type === 'bar' ? barOption() : pieOption()
 }
 
+/** 上次画的图形：柱↔饼↔环切换才整体替换选项，其余情况合并，数值变化才有补间动画 */
+let lastType: string | null = null
+
 function render(): void {
   if (!el.value) return
   if (!chart) chart = echarts.init(el.value)
-  // notMerge：切换图形时把旧 series 整个换掉，否则半径/坐标轴会残留
-  chart.setOption(buildOption(), true)
-  chart.resize()
+  // notMerge 只在换图形时用：切换 bar / pie / donut 必须把旧 series 整个换掉，
+  // 否则半径、坐标轴会残留；同一图形的数据变化要合并，ECharts 才会把柱子「长」过去
+  // 这里**不能**紧跟 chart.resize()：它会立刻做一次无动画的布局更新，把动画顶掉
+  chart.setOption(buildOption(), lastType !== null && lastType !== props.type)
+  lastType = props.type
+}
+
+/** 上一次的容器尺寸：ResizeObserver 观察开始时就会立刻回调一次，那次必须跳过 */
+let lastSize = ''
+
+function sizeOf(target: HTMLElement): string {
+  return `${Math.round(target.clientWidth)}x${Math.round(target.clientHeight)}`
 }
 
 onMounted(() => {
   render()
   // 侧栏折叠、窗口缩放：容器一变就 resize，否则图会挤变形
-  observer = new ResizeObserver(() => chart?.resize())
-  if (el.value) observer.observe(el.value)
+  observer = new ResizeObserver(() => {
+    if (!el.value) return
+    const size = sizeOf(el.value)
+    // 首次回调尺寸没变（resize 内部是关掉动画的更新，会顶掉入场动画）
+    if (size === lastSize) return
+    lastSize = size
+    chart?.resize()
+  })
+  if (el.value) {
+    lastSize = sizeOf(el.value)
+    observer.observe(el.value)
+  }
 })
 
 watch(() => [props.items, props.type], () => render(), { deep: true })
