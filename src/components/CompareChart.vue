@@ -9,7 +9,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 /**
  * 「收支对比」图：柱状图（收入 / 支出 / 结余）与环形图（收支占比）。
  * <p>和分类占比图分开写：分类图的颜色取分类语义色、维度是「分类」；
- * 这张图固定三段（收入/支出/结余），颜色固定为蓝/绿/灰，和导出的 Excel 一致。
+ * 这张图固定三段（收入/支出/结余），颜色跟流水列表/统计卡片一致：收入绿、支出红、结余蓝。
  */
 
 echarts.use([BarChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
@@ -21,9 +21,10 @@ const props = defineProps<{
   balance: string
 }>()
 
-const INCOME_COLOR = '#5b9bd5'
-const EXPENSE_COLOR = '#70ad47'
-const BALANCE_COLOR = '#7f7f7f'
+/** 与流水列表、统计卡片同一套语义色：收入绿、支出红；结余是差额，用蓝色区分开 */
+const INCOME_COLOR = '#10b981'
+const EXPENSE_COLOR = '#ef4444'
+const BALANCE_COLOR = '#409eff'
 
 const el = ref<HTMLDivElement | null>(null)
 let chart: ECharts | null = null
