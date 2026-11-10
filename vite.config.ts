@@ -1,5 +1,6 @@
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
+// 用 vitest/config 的 defineConfig：它比 vite 的多一个 `test` 段，否则 vite.config 里写 test 会 TS 报错
+import { defineConfig } from 'vitest/config'
 
 // https://vite.dev/config/
 export default defineConfig({

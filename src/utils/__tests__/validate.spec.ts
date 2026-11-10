@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FormItemRule } from 'element-plus'
-import { AMOUNT_MAX, AMOUNT_MESSAGE, amountRule, isEmail, PASSWORD_PATTERN } from '../validate'
+import { AMOUNT_MESSAGE, amountRule, isEmail, PASSWORD_PATTERN } from '../validate'
 
 /**
  * 金额 / 邮箱 / 密码规则的字段级白盒测试。
