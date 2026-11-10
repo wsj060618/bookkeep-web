@@ -11,6 +11,7 @@ import {
 import { saveBlob } from '../api/request'
 import { exportBookReceipts } from '../api/receipt'
 import { useShell } from '../composables/shell'
+import { useIsMobile } from '../composables/useIsMobile'
 import { useAuthStore } from '../stores/auth'
 import TxItem from '../components/TxItem.vue'
 import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
@@ -80,6 +81,22 @@ const exporting = ref(false)
 const filterType = ref<TxType | ''>('')
 const filterCategoryId = ref<number | null>(null)
 const dateRange = ref<[string, string] | null>(null)
+/** 手机上的两个单日选择器：daterange 面板在窄屏放不下，所以拆开渲染（见模板注释） */
+const isMobile = useIsMobile()
+const startDate = ref('')
+const endDate = ref('')
+
+/** 桌面选完区间，手机那两个框要跟着回显；反过来由 onMobileDateChange 同步 */
+watch(dateRange, (value) => {
+  startDate.value = value?.[0] ?? ''
+  endDate.value = value?.[1] ?? ''
+})
+
+function onMobileDateChange(): void {
+  // 只填一头等于没筛（后端把 null 当不限），这里要求两个都填
+  dateRange.value = startDate.value && endDate.value ? [startDate.value, endDate.value] : null
+  onSearch()
+}
 const keyword = ref('')
 
 /** 筛选区只列当前收支方向下的分类，选完收入再切支出时旧分类会被清掉 */
@@ -307,7 +324,28 @@ onMounted(() => {
         <el-option v-for="c in filterCategories" :key="c.id" :label="c.name" :value="c.id" />
       </el-select>
 
+      <!-- 手机上 daterange 的面板宽 646px，右半边（含「确定」）会跑出屏幕：
+           这里换成两个单日选择器，各 322px，装得下也好点 -->
+      <template v-if="isMobile">
+        <el-date-picker
+          v-model="startDate"
+          class="filter-date"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="开始日期"
+          @change="onMobileDateChange"
+        />
+        <el-date-picker
+          v-model="endDate"
+          class="filter-date"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="结束日期"
+          @change="onMobileDateChange"
+        />
+      </template>
       <el-date-picker
+        v-else
         v-model="dateRange"
         class="filter-date"
         type="daterange"
@@ -570,8 +608,11 @@ onMounted(() => {
     width: auto;
   }
 
+  /* 手机上日期是两个单日选择器，并排放一行（各占一半，日期字符串才不会被挤没） */
   .filter-date {
-    width: 100%;
+    flex: 1 1 calc(50% - 4px);
+    width: auto;
+    min-width: 0;
   }
 
   .filter-actions {

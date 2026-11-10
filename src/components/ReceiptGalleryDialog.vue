@@ -85,6 +85,8 @@ watch(
     if (open) void load()
     else clearState()
   },
+  // immediate：万一父组件直接以「打开」状态挂载（比如从别处带参数跳进来），也要加载一次
+  { immediate: true },
 )
 
 onBeforeUnmount(revokeAll)

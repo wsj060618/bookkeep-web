@@ -147,4 +147,16 @@ defineEmits<{
   flex: none;
   display: flex;
 }
+
+/* 极窄屏：备注独占一行，日期与徽标留到下一行，避免日期被挤没 */
+@media (max-width: 420px) {
+  .tx-line {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .tx-note {
+    flex: 1 1 100%;
+  }
+}
 </style>

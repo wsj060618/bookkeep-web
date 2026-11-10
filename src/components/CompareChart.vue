@@ -57,10 +57,13 @@ function buildOption(): EChartsCoreOption {
         {
           type: 'pie',
           // 只比收入和支出：结余是差额，放进占比会重复计算
-          radius: ['46%', '70%'],
-          center: ['50%', '44%'],
+          // 半径/圆心要给扇区外标签留位置：两行标签（名称 + 百分比）大约 30px，
+          // 半径给到 70% 时顶部标签会被画布裁掉（统计页实测「支出 7.46%」只剩半截）
+          radius: ['38%', '58%'],
+          center: ['50%', '48%'],
           itemStyle: { borderColor: '#fff', borderWidth: 2 },
-          label: { show: true, formatter: '{b}\n{d}%', fontSize: 12, lineHeight: 17 },
+          label: { show: true, formatter: '{b}\n{d}%', fontSize: 11, lineHeight: 14 },
+          labelLine: { length: 8, length2: 6 },
           labelLayout: { hideOverlap: true },
           data: items.value
             .filter((item) => item.name !== '结余')

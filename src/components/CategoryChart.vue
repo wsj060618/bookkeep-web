@@ -134,22 +134,23 @@ function pieOption(): EChartsCoreOption {
     series: [
       {
         type: 'pie',
-        radius: donut ? ['44%', '66%'] : '62%',
-        center: ['50%', '42%'],
+        // 同样给扇区外标签留位置：半径拉太满时顶部两行标签会被画布裁掉
+        radius: donut ? ['40%', '60%'] : '56%',
+        center: ['50%', '46%'],
         minAngle: 2,
         avoidLabelOverlap: true,
         itemStyle: { borderColor: '#fff', borderWidth: 2 },
         label: {
           show: showSliceLabels.value,
           formatter: '{b}\n{d}%',
-          fontSize: 12,
-          lineHeight: 17,
+          fontSize: 11,
+          lineHeight: 14,
           color: '#606266',
         },
         labelLine: {
           show: showSliceLabels.value,
-          length: 10,
-          length2: 8,
+          length: 8,
+          length2: 6,
           smooth: true,
           lineStyle: { color: '#dcdfe6' },
         },

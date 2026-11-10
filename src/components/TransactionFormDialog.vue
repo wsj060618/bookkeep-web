@@ -131,6 +131,11 @@ interface PendingReceipt {
 const pending = ref<PendingReceipt[]>([])
 const uploading = ref(false)
 
+/** 还能不能再选图：已存 + 待上传 一起算，到 9 就把入口藏掉 */
+const canAddMore = computed(
+  () => (props.editing?.receiptCount ?? 0) + pending.value.length < RECEIPT_MAX_PER_TRANSACTION,
+)
+
 function clearPending(): void {
   pending.value.forEach((item) => URL.revokeObjectURL(item.url))
   pending.value = []
@@ -140,18 +145,17 @@ function onPickReceipts(event: Event): void {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = '' // 允许再次选同一个文件
-  const existing = (props.editing?.receiptCount ?? 0) + pending.value.length
+  if (files.length === 0) return
+
+  // 已经存过的张数（编辑时才有）；循环里再加上本次已选的，逐个判上限
+  const savedCount = props.editing?.receiptCount ?? 0
   for (const file of files) {
-    const error = validateReceiptFile(file, existing + pending.value.length - (props.editing?.receiptCount ?? 0))
+    const error = validateReceiptFile(file, savedCount + pending.value.length)
     if (error) {
       ElMessage.warning(error)
       continue
     }
     pending.value.push({ file, title: defaultReceiptTitle(file.name), url: URL.createObjectURL(file) })
-  }
-  if (existing + pending.value.length > RECEIPT_MAX_PER_TRANSACTION) {
-    // 理论上 validate 已拦住，这里兜底防止 count 计算漂移
-    ElMessage.warning(`单笔最多 ${RECEIPT_MAX_PER_TRANSACTION} 张票据`)
   }
 }
 
@@ -330,7 +334,7 @@ async function onSubmit(): Promise<void> {
               </div>
             </div>
           </div>
-          <label v-if="pending.length < RECEIPT_MAX_PER_TRANSACTION" class="receipt-add" :class="{ busy: uploading }">
+          <label v-if="canAddMore" class="receipt-add" :class="{ busy: uploading }">
             <input type="file" :accept="RECEIPT_ACCEPT" multiple hidden @change="onPickReceipts" />
             📎 选择图片（jpg/png/webp，单张 ≤5MB）
           </label>
