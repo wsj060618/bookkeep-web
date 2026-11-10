@@ -80,6 +80,20 @@ describe('CategoriesView（模板页）', () => {
     expect(vm.dirty).toBe(false)
   })
 
+  it('老账本 categoryTemplateId 为 NULL → 回落到列表第一套，绝不停在 id=0', async () => {
+    // 这条是「下拉显示裸 0」的看门人：模板列表里没有 id=0，选中值就绝不能是 0
+    const { vm } = await mountPage([mine], null)
+    expect(vm.templateId).toBe(7)
+    expect(vm.draftItems.map((i) => i.name)).toEqual(['吃饭', '工资'])
+    expect(vm.dirty).toBe(false)
+  })
+
+  it('账本指向的模板已被删掉 → 也回落到第一套', async () => {
+    const { vm } = await mountPage([mine], 999)
+    expect(vm.templateId).toBe(7)
+    expect(vm.dirty).toBe(false)
+  })
+
   it('切到另一套模板 → 草稿跟着换，且仍然 dirty=false', async () => {
     const { vm } = await mountPage([builtin, mine])
 

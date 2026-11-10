@@ -22,7 +22,8 @@ import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
  * 改完是本地草稿，点「保存模板」才提交（`PUT /api/category-templates/{id}` 整体替换条目）。
  * 模板只在**新建账本**时被复制成那一本的分类；之后再改模板不会改动已有账本。
  *
- * <p>内置「班级班费」（id=0）只读：想改先「存为模板」复制一份。
+ * <p>「班级班费」是**注册时自动建好的真实模板**，和其他模板一样能改名、增删条目、删除。
+ * `id=0` 的只读投影只在「账号一套模板都没有」时兜底，正常用不到。
  */
 
 const auth = useAuthStore()
@@ -139,16 +140,15 @@ const formType = ref<TxType>('expense')
 const formInitial = ref<{ name: string; icon: string | null; color: string | null } | null>(null)
 
 /**
- * 内置模板是**代码里的常量**（`CategoryPresets.classCategories()`，id=0 不入库），
- * 所以没有可更新的行。想改它就自动复制一份到账号下（copy-on-write），再继续编辑。
- * <p>为什么不做成「直接改内置」：模板是账号级的，内置对所有账号是同一个常量；
- * 落库就意味着每个账号都要有一份副本，那不如第一次编辑时复制，语义最清楚。
+ * 兜底：只有「账号里一套模板都没有」时，后端才返回 id=0 的只读投影（内容还是那 11 条）。
+ * 正常账号（含历史账号，见 DefaultTemplateInitializer）都有真实模板，走不到这里。
+ * <p>保留复制路径是为了让空模板账号点「编辑」时能一键复制成自己的模板，而不是卡住。
  */
 async function ensureEditableTemplate(): Promise<boolean> {
   if (!selectedIsBuiltin.value) return true
   const confirmed = await ElMessageBox.confirm(
-    '内置模板是代码里的固定模板，不能直接修改。要复制一份到你的账号下再编辑吗？',
-    '内置模板只读',
+    '这一套是内置的只读模板。要复制一份到你账号下再编辑吗？',
+    '先复制一份',
     { confirmButtonText: '复制并编辑', cancelButtonText: '取消' },
   )
     .then(() => true)
@@ -320,9 +320,11 @@ async function loadTemplates(): Promise<void> {
   } catch {
     return
   }
-  // 模板被删掉后可能留着旧 id：不在列表里就回落到内置
+  // 选中项必须是列表里真实存在的一项：
+  // 老账本的 book.category_template_id 可能还是 NULL（默认模板是后来才落库的），
+  // onMounted 会把 NULL 当成 id=0，而下拉里已经没有 id=0 的选项——原来会直接显示一个裸「0」。
   if (!templates.value.some((t) => t.id === templateId.value)) {
-    templateId.value = BUILTIN_ID
+    templateId.value = templates.value[0]?.id ?? BUILTIN_ID
   }
   if (!dirty.value) {
     syncDraft()
@@ -458,8 +460,8 @@ onMounted(async () => {
       </div>
 
       <p class="tpl-tip">
-        内置「班级班费」是代码里的固定模板（id=0，库里没有这一行），所以直接点「编辑 / 新增 / 删除」时会先
-        <b>自动复制一份</b>到你的账号下再改；也可以手动「存为模板」。
+        「班级班费」是注册时自动给你建好的模板，和自建模板一样可以改名、增删条目、删除；
+        删除不影响已经用过它的账本（分类是复制过去的）。
         切换模板时若有未保存的改动会提示你确认。
       </p>
     </section>

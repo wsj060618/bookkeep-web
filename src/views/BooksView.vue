@@ -140,7 +140,13 @@ function templateLabel(t: CategoryTemplate): string {
  * 下拉里看得见选的是哪套，不会偷偷改变含义。
  */
 function syncDefaultTemplate(): void {
-  newTemplateId.value = currentBook.value?.categoryTemplateId ?? BUILTIN_ID
+  const preferred = currentBook.value?.categoryTemplateId ?? null
+  // 老账本 categoryTemplateId 可能是 NULL（默认模板后来才落库）：这时选列表第一套，
+  // 不要把 0 写进下拉——列表里没有 id=0 的选项，会显示成一个裸「0」
+  newTemplateId.value =
+    preferred !== null && templates.value.some((t) => t.id === preferred)
+      ? preferred
+      : templates.value[0]?.id ?? BUILTIN_ID
 }
 
 async function loadTemplates(): Promise<void> {
