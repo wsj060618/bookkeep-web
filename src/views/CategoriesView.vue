@@ -2,10 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listBooks } from '../api/book'
+import { saveBlob } from '../api/request'
 import {
   createTemplate,
   createTemplateFromBook,
   deleteTemplate,
+  exportTemplate,
+  importTemplate,
   listTemplates,
   updateTemplate,
 } from '../api/template'
@@ -16,7 +19,7 @@ import { useShell } from '../composables/shell'
 import { useAuthStore } from '../stores/auth'
 import { colorOf, iconOf } from '../utils/category'
 import { isTruncated } from '../utils/ellipsis'
-import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
+import type { CategoryTemplate, TemplateDoc, TemplateItemInput, TxType } from '../types/api'
 
 /**
  * 分类模板页：两张卡片就是所选模板的条目，改一条存一条（没有草稿和保存按钮）。
@@ -388,6 +391,62 @@ async function onDeleteTemplate(): Promise<void> {
   }
 }
 
+/* ---------- 模板 JSON 的导出 / 导入 ---------- */
+
+const importInput = ref<HTMLInputElement | null>(null)
+
+/** 存成 .json：图标、颜色、排序都在里面，换账号导入后样子一样 */
+async function onExportTemplate(): Promise<void> {
+  const template = selectedTemplate.value
+  if (!template) return
+  try {
+    const doc = await exportTemplate(template.id)
+    const text = JSON.stringify(doc, null, 2)
+    saveBlob(
+      new Blob([text], { type: 'application/json;charset=utf-8' }),
+      `${fileNameOf(template.name)}_分类模板.json`,
+    )
+    ElMessage.success(`已导出「${template.name}」（${doc.items.length} 个分类）`)
+  } catch {
+    // 提示已由拦截器弹出
+  }
+}
+
+function onPickTemplateFile(): void {
+  importInput.value?.click()
+}
+
+/** 导入成新模板：重名由后端加「（导入）」后缀，不碰任何账本 */
+async function onTemplateFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  // 清空选择，同一个文件还能再选一次
+  input.value = ''
+  if (!file) return
+
+  let doc: TemplateDoc
+  try {
+    doc = JSON.parse(await file.text()) as TemplateDoc
+  } catch {
+    ElMessage.error('这个文件不是有效的 JSON')
+    return
+  }
+  try {
+    const created = await importTemplate(doc)
+    await loadTemplates()
+    templateId.value = created.id
+    ElMessage.success(`已导入模板「${created.name}」（${created.items.length} 个分类）`)
+  } catch {
+    // 版本太新 / 没有分类等 400 已由拦截器弹出
+  }
+}
+
+/** 文件名里的非法字符换掉，其余照旧 */
+function fileNameOf(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|]/g, '_').trim()
+  return cleaned || '模板'
+}
+
 onMounted(async () => {
   // 默认选中当前账本用的那套模板
   const current = auth.books.find((b) => b.current) ?? auth.books[0] ?? null
@@ -415,10 +474,19 @@ onMounted(async () => {
 
         <el-button type="primary" @click="onCreateTemplate">新建模板</el-button>
         <el-button @click="onSaveAsTemplate">存为模板</el-button>
+        <el-button @click="onExportTemplate">导出</el-button>
+        <el-button @click="onPickTemplateFile">导入</el-button>
         <el-button :disabled="selectedIsBuiltin" @click="onRenameTemplate">重命名</el-button>
         <el-button type="danger" plain :disabled="selectedIsBuiltin" @click="onDeleteTemplate">
           删除模板
         </el-button>
+        <input
+          ref="importInput"
+          type="file"
+          accept=".json,application/json"
+          class="import-file-input"
+          @change="onTemplateFile"
+        />
       </div>
     </section>
 
@@ -552,6 +620,10 @@ onMounted(async () => {
 
 .tpl-select {
   width: 220px;
+}
+
+.import-file-input {
+  display: none;
 }
 
 .tpl-dirty {

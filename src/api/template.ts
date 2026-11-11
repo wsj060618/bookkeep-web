@@ -1,4 +1,4 @@
-import type { CategoryTemplate, TemplateItemInput } from '../types/api'
+import type { CategoryTemplate, TemplateDoc, TemplateItemInput } from '../types/api'
 import { del, get, post, put } from './request'
 
 /**
@@ -39,4 +39,17 @@ export function updateTemplate(
 /** DELETE /api/category-templates/{id}：物理删除；引用它的账本自动指回内置模板 */
 export function deleteTemplate(id: number): Promise<void> {
   return del<void>(`/category-templates/${id}`)
+}
+
+/**
+ * GET /api/category-templates/{id}/export：拿模板 JSON（图标/颜色/排序都在里面）。
+ * 返回的是普通信封而不是文件流，前端自己 `JSON.stringify` + `saveBlob` 存成 .json。
+ */
+export function exportTemplate(id: number): Promise<TemplateDoc> {
+  return get<TemplateDoc>(`/category-templates/${id}/export`)
+}
+
+/** POST /api/category-templates/import：JSON → 新模板（重名后端自动加「（导入）」后缀） */
+export function importTemplate(doc: TemplateDoc): Promise<CategoryTemplate> {
+  return post<CategoryTemplate>('/category-templates/import', doc)
 }

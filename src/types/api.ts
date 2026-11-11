@@ -61,6 +61,22 @@ export type TemplateItemInput = Pick<CategoryTemplateItem, 'name' | 'type' | 'ic
   id?: number | null
 }
 
+/** 模板条目的 JSON 表示（导出文件里的一条；没有 id，跨账号导入时 id 没有意义） */
+export interface TemplateDocItem {
+  name: string
+  type: TxType
+  icon: string | null
+  color: string | null
+  sortOrder: number | null
+}
+
+/** 分类模板的 JSON 文档：模板导出/导入的文件格式，也是账本包里的「分类模板.json」 */
+export interface TemplateDoc {
+  version: number
+  name: string
+  items: TemplateDocItem[]
+}
+
 /** 单本分享的响应 */
 export interface ShareLink {
   token: string
