@@ -439,9 +439,10 @@ onMounted(() => {
         @keyup.enter="onSearch"
         @clear="onSearch"
       />
+      <!-- 和搜索框同一行：改完条件就地清掉，不用跑到右边那排按钮里找 -->
+      <el-button class="filter-reset" @click="onReset">重置</el-button>
 
       <div class="filter-actions">
-        <el-button @click="onReset">重置</el-button>
         <el-button :disabled="archived" @click="openImport">导入</el-button>
         <el-dropdown trigger="click" @command="onExport">
           <el-button type="primary" plain :loading="exporting">
@@ -457,7 +458,12 @@ onMounted(() => {
           </template>
         </el-dropdown>
         <!-- 手机上用的是右下角浮动按钮，这里只给桌面/平板 -->
-        <el-button v-if="!isMobile && !archived" type="primary" @click="shell.openCreate()">
+        <el-button
+          v-if="!isMobile && !archived"
+          class="filter-create"
+          type="primary"
+          @click="shell.openCreate()"
+        >
           记一笔
         </el-button>
       </div>
@@ -666,10 +672,19 @@ onMounted(() => {
   width: 160px;
 }
 
+.filter-reset {
+  flex: none;
+}
+
 .filter-actions {
   display: flex;
   gap: 8px;
   margin-left: auto;
+}
+
+/* 「导入 / 导出」是一组动作，「记一笔」是主动作，多留一点空档分开 */
+.filter-create {
+  margin-left: 8px;
 }
 
 .batch-bar {
@@ -781,10 +796,11 @@ onMounted(() => {
     min-width: 0;
   }
 
-  /* 搜备注独占一行 */
+  /* 搜备注和「重置」同一行：输入框吃掉剩余宽度，重置保持自身宽度 */
   .filter-keyword {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
     width: auto;
+    min-width: 0;
   }
 
   /* 手机上日期是两个单日选择器，并排放一行（各占一半，日期字符串才不会被挤没） */
@@ -794,13 +810,22 @@ onMounted(() => {
     min-width: 0;
   }
 
+  /* 手机：只剩「导入 / 导出」两个按钮，等分一行。
+     这里必须用 grid —— flex 下两格会按内容宽度分（实测 191 / 159），grid 直接均分 */
   .filter-actions {
     width: 100%;
     margin-left: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
 
-  .filter-actions .el-button {
-    flex: 1;
+  .filter-actions .el-dropdown {
+    display: flex;
+  }
+
+  .filter-actions .el-dropdown .el-button {
+    width: 100%;
   }
 
   /* 窄屏放不下「总数 + 条数 + 页码 + 跳页」：先藏跳页，保留总数与条数选择 */
