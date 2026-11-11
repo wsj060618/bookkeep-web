@@ -10,7 +10,8 @@ const CompareChart = defineAsyncComponent(() => import('../components/CompareCha
 
 /**
  * 统计页：默认看全部时间，可按月份区间筛选。
- * 卡片：收入 / 支出 / 结余（结余是区间末那天的余额，不是区间内的收支差）。
+ * 卡片：收入 / 支出 / 结余（结余是区间末那天的账户余额，不是区间内的收支差）。
+ * 「收支对比」图里那根「结余」柱仍是区间收支差，和卡片不同源（见 chartBalance）。
  * 改过流水（txVersion 变化）后要重拉，否则从流水页回来数字是旧的。
  */
 
@@ -25,6 +26,15 @@ const stats = ref<Record<TxType, CategoryStat[]>>({ expense: [], income: [] })
 
 const startMonth = computed(() => monthRange.value?.[0])
 const endMonth = computed(() => monthRange.value?.[1])
+
+/**
+ * 图里的「结余」柱一直是「区间收支差」（income − expense），和卡片上的「结余」（区间末账户余额）
+ * 不是一个东西：余下几百块和「这段花了多少」放同一根坐标轴上量级差太远，柱子会失衡。
+ */
+const chartBalance = computed(() => {
+  const net = Number(summary.value?.income ?? 0) - Number(summary.value?.expense ?? 0)
+  return net.toFixed(2)
+})
 
 /** 页面上显示的区间文字 */
 const rangeText = computed(() => {
@@ -114,7 +124,7 @@ onMounted(() => {
             type="bar"
             :income="summary?.income ?? '0.00'"
             :expense="summary?.expense ?? '0.00'"
-            :balance="summary?.balance ?? '0.00'"
+            :balance="chartBalance"
           />
         </div>
         <div class="compare-card">
@@ -123,7 +133,7 @@ onMounted(() => {
             type="donut"
             :income="summary?.income ?? '0.00'"
             :expense="summary?.expense ?? '0.00'"
-            :balance="summary?.balance ?? '0.00'"
+            :balance="chartBalance"
           />
         </div>
       </div>
