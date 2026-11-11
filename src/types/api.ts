@@ -216,15 +216,15 @@ export interface TransactionQuery {
   keyword?: string
 }
 
-/** 区间统计；startMonth / endMonth 为 null 表示该端不限（都不传 = 全部时间） */
+/** 区间统计；startDate / endDate 为 null 表示该端不限（都不传 = 全部时间） */
 export interface Summary {
-  /** yyyy-MM */
-  startMonth: string | null
-  /** yyyy-MM */
-  endMonth: string | null
+  /** yyyy-MM-dd */
+  startDate: string | null
+  /** yyyy-MM-dd */
+  endDate: string | null
   income: string
   expense: string
-  /** 区间末（结束月最后一天）的账户余额；结束月份不限时 = 当前余额 */
+  /** 区间末（结束日当天）的账户余额；结束日不限时 = 当前余额 */
   balance: string
 }
 

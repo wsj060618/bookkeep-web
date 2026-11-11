@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { fetchCategoryStat, fetchSummary } from '../api/statistic'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
 import { useShell } from '../composables/shell'
+import { useIsMobile } from '../composables/useIsMobile'
 import type { CategoryStat, Summary, TxType } from '../types/api'
 import { formatMoney } from '../utils/money'
 
@@ -10,23 +11,42 @@ import { formatMoney } from '../utils/money'
 const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
 
 /**
- * 统计页：默认看全部时间，可按月份区间筛选。
+ * 统计页：默认看全部时间，可按日期区间筛选（精确到天）。
  * 卡片：收入 / 支出 / 结余（结余是区间末那天的账户余额，不是区间内的收支差）。
  * 「收支对比」图里那根「结余」柱仍是区间收支差，和卡片不同源（见 chartBalance）。
  * 改过流水（txVersion 变化）后要重拉，否则从流水页回来数字是旧的。
  */
 
 const shell = useShell()
+const isMobile = useIsMobile()
 
 const loading = ref(false)
-/** 空 = 全部时间；有值 = [开始月, 结束月]，都是 yyyy-MM */
-const monthRange = ref<[string, string] | null>(null)
+/** 空 = 全部时间；有值 = [开始日, 结束日]，都是 yyyy-MM-dd */
+const dateRange = ref<[string, string] | null>(null)
+/** 手机上的两个单日选择器：daterange 面板 646px，窄屏右半边（含「确定」）会跑出屏幕 */
+const startDate = ref('')
+const endDate = ref('')
 const summary = ref<Summary | null>(null)
 /** 两个方向一次都拉回来：并排展示，不需要再等第二次请求 */
 const stats = ref<Record<TxType, CategoryStat[]>>({ expense: [], income: [] })
 
-const startMonth = computed(() => monthRange.value?.[0])
-const endMonth = computed(() => monthRange.value?.[1])
+const rangeStart = computed(() => dateRange.value?.[0])
+const rangeEnd = computed(() => dateRange.value?.[1])
+
+/** 桌面选完区间，手机那两个框要跟着回显；反过来由 onMobileDateChange 同步 */
+watch(dateRange, (value) => {
+  startDate.value = value?.[0] ?? ''
+  endDate.value = value?.[1] ?? ''
+})
+
+function onMobileDateChange(): void {
+  // 只填一头等于没筛（后端把 null 当不限），这里要求两个都填
+  dateRange.value = startDate.value && endDate.value ? [startDate.value, endDate.value] : null
+  void load()
+}
+
+/** 重置按钮的可用性：手机上可能只填了一头，也要能重置 */
+const hasRange = computed(() => !!(dateRange.value || startDate.value || endDate.value))
 
 /**
  * 图里的「结余」柱一直是「区间收支差」（income − expense），和卡片上的「结余」（区间末账户余额）
@@ -39,17 +59,17 @@ const chartBalance = computed(() => {
 
 /** 页面上显示的区间文字 */
 const rangeText = computed(() => {
-  if (!startMonth.value && !endMonth.value) return '全部时间'
-  return `${startMonth.value || '最早'} ~ ${endMonth.value || '至今'}`
+  if (!rangeStart.value && !rangeEnd.value) return '全部时间'
+  return `${rangeStart.value || '最早'} ~ ${rangeEnd.value || '今天'}`
 })
 
 async function load(): Promise<void> {
   loading.value = true
   try {
     const [resp, expense, income] = await Promise.all([
-      fetchSummary(startMonth.value, endMonth.value),
-      fetchCategoryStat(startMonth.value, endMonth.value, 'expense'),
-      fetchCategoryStat(startMonth.value, endMonth.value, 'income'),
+      fetchSummary(rangeStart.value, rangeEnd.value),
+      fetchCategoryStat(rangeStart.value, rangeEnd.value, 'expense'),
+      fetchCategoryStat(rangeStart.value, rangeEnd.value, 'income'),
     ])
     summary.value = resp
     stats.value = { expense, income }
@@ -61,9 +81,11 @@ async function load(): Promise<void> {
   }
 }
 
-/** 重置：清空区间，回到「全部时间」 */
+/** 重置：清空区间（含手机上那两个单日框），回到「全部时间」 */
 function onReset(): void {
-  monthRange.value = null
+  dateRange.value = null
+  startDate.value = ''
+  endDate.value = ''
   void load()
 }
 
@@ -83,17 +105,38 @@ onMounted(() => {
         <h2 class="page-title">收支统计</h2>
       </div>
       <div class="head-actions">
+        <!-- 手机上 daterange 的面板宽 646px，右半边（含「确定」）会跑出屏幕：
+             换成两个单日选择器，两个都填才生效 -->
+        <template v-if="isMobile">
+          <el-date-picker
+            v-model="startDate"
+            class="date-picker"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="开始日期"
+            @change="onMobileDateChange"
+          />
+          <el-date-picker
+            v-model="endDate"
+            class="date-picker"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="结束日期"
+            @change="onMobileDateChange"
+          />
+        </template>
         <el-date-picker
-          v-model="monthRange"
-          class="month-picker"
-          type="monthrange"
-          value-format="YYYY-MM"
-          range-separator="至"
-          start-placeholder="开始月份"
-          end-placeholder="结束月份"
+          v-else
+          v-model="dateRange"
+          class="date-picker range-picker"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          unlink-panels
           @change="load"
         />
-        <el-button :disabled="!monthRange" @click="onReset">重置</el-button>
+        <el-button :disabled="!hasRange" @click="onReset">重置</el-button>
       </div>
     </div>
 
@@ -115,7 +158,7 @@ onMounted(() => {
     <section v-loading="loading" class="panel">
       <div class="panel-head">
         <h3 class="panel-title">收支对比</h3>
-        <span class="panel-month">{{ rangeText }}</span>
+        <span class="panel-range">{{ rangeText }}</span>
       </div>
 
       <div class="charts-row">
@@ -143,7 +186,7 @@ onMounted(() => {
     <section v-loading="loading" class="panel">
       <div class="panel-head">
         <h3 class="panel-title">分类占比</h3>
-        <span class="panel-month">{{ rangeText }}</span>
+        <span class="panel-range">{{ rangeText }}</span>
       </div>
 
       <div class="charts-row">
@@ -183,9 +226,15 @@ onMounted(() => {
   min-width: 0;
 }
 
-.month-picker {
-  width: 260px;
+/* :deep 是因为 el-date-picker 的根元素挂在 el-tooltip 下，拿不到本组件的 scope id，
+   不写 :deep 的 .date-picker 规则一条都不生效（实测还是 Element 的 220px / 350px） */
+.head-actions :deep(.date-picker) {
+  width: 230px;
   min-width: 0;
+}
+
+.head-actions :deep(.range-picker) {
+  width: 320px;
 }
 
 .numbers {
@@ -245,7 +294,7 @@ onMounted(() => {
   font-size: 14px;
 }
 
-.panel-month {
+.panel-range {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
@@ -291,14 +340,21 @@ onMounted(() => {
     font-size: 18px;
   }
 
+  /* 两个单日框并排，重置按钮落到第二行整行 */
   .head-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
-  .month-picker {
-    flex: 1;
-    width: auto;
-    min-width: 0;
+  .head-actions :deep(.date-picker) {
+    width: 100%;
+  }
+
+  .head-actions :deep(.el-button) {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
   }
 }
 </style>
