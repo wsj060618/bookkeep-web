@@ -27,18 +27,36 @@ const isMobile = useIsMobile()
 const report = ref<PublicReport | null>(null)
 const loading = ref(false)
 const failed = ref(false)
-/** 空 = 全部时间；有值 = [开始月, 结束月]，都是 yyyy-MM */
-const monthRange = ref<[string, string] | null>(null)
+/** 空 = 全部时间；有值 = [开始日, 结束日]，都是 yyyy-MM-dd */
+const dateRange = ref<[string, string] | null>(null)
+/** 手机上的两个单日选择器：daterange 面板宽 646px，窄屏右半边（含「确定」）会跑出屏幕 */
+const startDate = ref('')
+const endDate = ref('')
 /** 当前查看的账本：一条链接可以带多本，用标签页切换 */
 const activeBookId = ref<number | null>(null)
 
-const startMonth = computed(() => monthRange.value?.[0])
-const endMonth = computed(() => monthRange.value?.[1])
+const rangeStart = computed(() => dateRange.value?.[0])
+const rangeEnd = computed(() => dateRange.value?.[1])
 
 const rangeText = computed(() => {
-  if (!startMonth.value && !endMonth.value) return '全部时间'
-  return `${startMonth.value || '最早'} ~ ${endMonth.value || '至今'}`
+  if (!rangeStart.value && !rangeEnd.value) return '全部时间'
+  return `${rangeStart.value || '最早'} ~ ${rangeEnd.value || '今天'}`
 })
+
+/** 重置按钮的可用性：手机上可能只填了一头（那头不参与筛选），也要能重置 */
+const hasRange = computed(() => !!(dateRange.value || startDate.value || endDate.value))
+
+/** 桌面选完区间，手机那两个框要跟着回显；反过来由 onMobileDateChange 同步 */
+watch(dateRange, (value) => {
+  startDate.value = value?.[0] ?? ''
+  endDate.value = value?.[1] ?? ''
+})
+
+function onMobileDateChange(): void {
+  // 只填一头等于没筛（后端把 null 当不限），这里要求两个都填
+  dateRange.value = startDate.value && endDate.value ? [startDate.value, endDate.value] : null
+  void load()
+}
 
 const books = computed(() => report.value?.books ?? [])
 const current = computed<PublicBookReport | null>(() => {
@@ -74,7 +92,7 @@ const pagedTransactions = computed(() => {
 const maxPage = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 
 // 换账本 / 换区间 / 换每页条数后回到第一页，否则会停在一个不存在的页码上
-watch([activeBookId, monthRange, size], () => {
+watch([activeBookId, dateRange, size], () => {
   page.value = 1
 })
 
@@ -116,7 +134,7 @@ async function load(): Promise<void> {
   loading.value = true
   failed.value = false
   try {
-    const resp = await fetchPublicReport(token.value, startMonth.value, endMonth.value)
+    const resp = await fetchPublicReport(token.value, rangeStart.value, rangeEnd.value)
     report.value = resp
     // 保持当前选中的账本；它不在这次结果里（比如被彻底删了）就回到第一本
     if (!resp.books.some((b) => b.bookId === activeBookId.value)) {
@@ -131,15 +149,19 @@ async function load(): Promise<void> {
   }
 }
 
-/** 重置：清空区间，回到「全部时间」 */
+/** 重置：清空区间（含手机上那两个单日框），回到「全部时间」 */
 function onReset(): void {
-  monthRange.value = null
+  dateRange.value = null
+  startDate.value = ''
+  endDate.value = ''
   void load()
 }
 
 // 同一个人可能改地址栏里的 token 直接换一条链接看
 watch(token, () => {
-  monthRange.value = null
+  dateRange.value = null
+  startDate.value = ''
+  endDate.value = ''
   activeBookId.value = null
   void load()
 })
@@ -170,20 +192,41 @@ onMounted(load)
     <template v-else>
       <section v-loading="loading" class="card">
         <div class="card-head">
-          <span class="month-label">{{ rangeText }}</span>
+          <span class="range-label">{{ rangeText }}</span>
 
           <div class="range-actions">
+            <!-- 手机上 daterange 的面板宽 646px，右半边（含「确定」）会跑出屏幕：
+                 和管理页同一个方案，换成两个单日选择器。两个都填才生效，填一个按「不限」处理 -->
+            <template v-if="isMobile">
+              <el-date-picker
+                v-model="startDate"
+                class="date-picker"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="开始日期"
+                @change="onMobileDateChange"
+              />
+              <el-date-picker
+                v-model="endDate"
+                class="date-picker"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="结束日期"
+                @change="onMobileDateChange"
+              />
+            </template>
             <el-date-picker
-              v-model="monthRange"
-              class="month-picker"
-              type="monthrange"
-              value-format="YYYY-MM"
-              range-separator="至"
-              start-placeholder="开始月份"
-              end-placeholder="结束月份"
+              v-else
+              v-model="dateRange"
+              class="date-picker range-picker"
+              type="daterange"
+              value-format="YYYY-MM-DD"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              unlink-panels
               @change="load"
             />
-            <el-button :disabled="!monthRange" @click="onReset">重置</el-button>
+            <el-button :disabled="!hasRange" @click="onReset">重置</el-button>
           </div>
         </div>
 
@@ -369,7 +412,7 @@ onMounted(load)
   max-width: 45%;
 }
 
-.month-label {
+.range-label {
   font-size: 13px;
   color: var(--el-text-color-secondary);
 }
@@ -380,8 +423,15 @@ onMounted(load)
   gap: 8px;
 }
 
-.month-picker {
-  width: 260px;
+/* 手机上两个单日框各占一半（见媒体查询），桌面这两个宽度只影响单框。
+   :deep 是因为 el-date-picker 的根元素挂在 el-tooltip 下，拿不到本组件的 scope id，
+   不写 :deep 的 .date-picker 规则一条都不会生效（实测还是 Element 的 220px / 350px） */
+.range-actions :deep(.date-picker) {
+  width: 230px;
+}
+
+.range-actions :deep(.range-picker) {
+  width: 320px;
 }
 
 .numbers {
@@ -602,19 +652,26 @@ onMounted(load)
     font-size: 14px;
   }
 
-  /* 区间选择器独占一行：260px + 重置按钮在窄屏放不下 */
+  /* 区间选择器独占一行：两个单日框并排，重置按钮落到第二行整行 */
   .card-head {
     align-items: stretch;
   }
 
   .range-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
-  .month-picker {
-    flex: 1;
-    width: auto;
+  .range-actions :deep(.date-picker) {
+    width: 100%;
     min-width: 0;
+  }
+
+  .range-actions :deep(.el-button) {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-left: 0;
   }
 
   /* 极窄屏：备注独占一行，避免日期/徽标被挤掉 */
