@@ -73,6 +73,8 @@ const titles = reactive<Record<number, string>>({})
 const removed = reactive<Set<number>>(new Set())
 /** receiptId → objectURL（仅用于显示） */
 const previews = reactive<Record<number, string>>({})
+/** 取图失败的 receiptId：加载中显示骨架，只有确定失败才显示文案 */
+const failed = reactive<Set<number>>(new Set())
 
 function revokeAll(): void {
   Object.values(previews).forEach((url) => URL.revokeObjectURL(url))
@@ -85,6 +87,7 @@ function resetState(): void {
   receipts.value = []
   pending.value = []
   removed.clear()
+  failed.clear()
   Object.keys(titles).forEach((key) => delete titles[Number(key)])
 }
 
@@ -123,7 +126,8 @@ async function load(): Promise<void> {
           const blob = await fetchReceiptBlob(tx.id, r.id)
           previews[r.id] = URL.createObjectURL(blob)
         } catch {
-          // 拦截器已提示
+          // 拦截器已提示；这里只记住“确定失败”，好把加载中的骨架换掉
+          failed.add(r.id)
         }
       }),
     )
@@ -174,6 +178,20 @@ const previewList = computed(
       ...pending.value.map((item) => item.url),
     ].filter(Boolean) as string[],
 )
+
+/**
+ * 缩略图三态：取图是异步的（blob → objectURL），加载中不能显示「加载失败」。
+ * 只有真失败了才给文案，否则一直留在 skeleton。
+ */
+function thumbState(id: number): 'ok' | 'loading' | 'failed' {
+  if (previews[id]) return 'ok'
+  return failed.has(id) ? 'failed' : 'loading'
+}
+
+/** previewList 已经滤掉失败的图，大图起点要按滤后的列表算 */
+function previewIndex(id: number): number {
+  return previewList.value.indexOf(previews[id])
+}
 
 const canAddMore = computed(
   () => kept.value.length + pending.value.length < RECEIPT_MAX_PER_TRANSACTION,
@@ -326,7 +344,11 @@ async function exportZip(): Promise<void> {
       </span>
     </div>
 
-    <div v-loading="loading" class="gallery">
+    <div
+      v-loading="loading"
+      element-loading-background="rgba(255, 255, 255, 0.6)"
+      class="gallery"
+    >
       <!-- 库里已有的：删除/改名只改本地，点「保存」才提交 -->
       <div
         v-for="receipt in kept"
@@ -335,15 +357,23 @@ async function exportZip(): Promise<void> {
         :class="{ changed: titles[receipt.id] !== receipt.title }"
       >
         <el-image
-          v-if="previews[receipt.id]"
+          v-if="thumbState(receipt.id) === 'ok'"
           class="thumb"
           :src="previews[receipt.id]"
           fit="cover"
           :preview-src-list="previewList"
-          :initial-index="kept.findIndex((r) => r.id === receipt.id)"
+          :initial-index="previewIndex(receipt.id)"
           preview-teleported
-        />
-        <div v-else class="thumb thumb-empty">图片加载失败</div>
+        >
+          <!-- 公示页走匿名直链，404 时也要有提示，而不是破图图标 -->
+          <template #error>
+            <div class="thumb-failed">图片加载失败</div>
+          </template>
+        </el-image>
+        <div v-else-if="thumbState(receipt.id) === 'failed'" class="thumb thumb-failed">
+          图片加载失败
+        </div>
+        <div v-else class="thumb thumb-loading" />
 
         <el-input v-if="!readonly" v-model="titles[receipt.id]" size="small" maxlength="30" class="title-input" />
         <div v-else class="title-text">{{ receipt.title }}</div>
@@ -459,11 +489,33 @@ async function exportZip(): Promise<void> {
   background: #fff;
 }
 
-.thumb-empty {
+/* 加载中只给灰块（不写字，避免和「加载失败」混淆）；失败才给文案 */
+.thumb-loading,
+.thumb-failed {
   display: grid;
   place-items: center;
+  width: 100%;
+  height: 110px;
+  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
   font-size: 12px;
   color: var(--el-text-color-placeholder);
+}
+
+.thumb-loading {
+  background: var(--el-fill-color-darker);
+  animation: thumb-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes thumb-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
 }
 
 .title-input :deep(.el-input__inner) {

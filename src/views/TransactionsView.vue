@@ -16,6 +16,7 @@ import { useIsMobile } from '../composables/useIsMobile'
 import { useAuthStore } from '../stores/auth'
 import TxItem from '../components/TxItem.vue'
 import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
+import TextPeekDialog from '../components/TextPeekDialog.vue'
 import type { ImportResult, Transaction, TransactionQuery, TxType, ZipImportResult } from '../types/api'
 
 /**
@@ -244,6 +245,18 @@ function openGallery(tx: Transaction): void {
   galleryVisible.value = true
 }
 
+/* ---------- 被省略号截断的文字：点一下看全文 ---------- */
+
+const peekVisible = ref(false)
+const peekTitle = ref('')
+const peekText = ref('')
+
+function onPeek(text: string, title: string): void {
+  peekTitle.value = title
+  peekText.value = text
+  peekVisible.value = true
+}
+
 /** 票据增删后徽标数字要变：只重新拉列表，不动筛选条件 */
 function onReceiptsChanged(): void {
   void loadList()
@@ -462,6 +475,7 @@ onMounted(() => {
           @edit="shell.openEdit"
           @remove="onDelete"
           @receipts="openGallery"
+          @peek="onPeek"
         />
       </div>
     </section>
@@ -573,6 +587,8 @@ onMounted(() => {
       :transaction="galleryTx"
       @changed="onReceiptsChanged"
     />
+
+    <TextPeekDialog v-model="peekVisible" :title="peekTitle" :text="peekText" />
   </div>
 </template>
 

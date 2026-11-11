@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { colorOf, iconOf } from '../utils/category'
+import { isTruncated } from '../utils/ellipsis'
 import type { Transaction } from '../types/api'
 
 /**
@@ -10,11 +11,18 @@ defineProps<{
   actions?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   edit: [tx: Transaction]
   remove: [tx: Transaction]
   receipts: [tx: Transaction]
+  /** 点了被省略号截断的文字：由页面弹出全文 */
+  peek: [text: string, title: string]
 }>()
+
+function onPeek(event: MouseEvent, text: string | null, title: string): void {
+  if (!text || !isTruncated(event.currentTarget)) return
+  emit('peek', text, title)
+}
 </script>
 
 <template>
@@ -25,13 +33,15 @@ defineEmits<{
 
     <div class="tx-main">
       <div class="tx-line">
-        <span class="tx-category">{{ tx.categoryName }}</span>
+        <span class="tx-category" @click="onPeek($event, tx.categoryName, '分类')">{{
+          tx.categoryName
+        }}</span>
         <span class="tx-amount" :class="tx.type">
           {{ tx.type === 'income' ? '+' : '-' }}￥{{ tx.amount }}
         </span>
       </div>
       <div class="tx-line">
-        <span class="tx-note">{{ tx.note || '—' }}</span>
+        <span class="tx-note" @click="onPeek($event, tx.note, '备注')">{{ tx.note || '—' }}</span>
         <span class="tx-tail">
           <button
             v-if="tx.receiptCount > 0"
@@ -76,21 +86,29 @@ defineEmits<{
   flex: 1;
   min-width: 0;
   display: grid;
+  /* 隐式列默认 auto → 按 max-content 取宽，长备注会把整行撑到 871px */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
 }
 
 .tx-line {
   display: flex;
+  min-width: 0;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
 
 .tx-category {
+  min-width: 0;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tx-amount {
+  flex: none;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
@@ -111,6 +129,9 @@ defineEmits<{
 }
 
 .tx-note {
+  /* min-width:0：flex 子项默认 min-width:auto 会按整段 nowrap 文本取宽（实测 871px），
+     既不省略也没法判断是否被截断 */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

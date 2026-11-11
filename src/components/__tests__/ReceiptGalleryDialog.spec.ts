@@ -71,6 +71,8 @@ interface DialogVm {
   importFailed: { file: string; reason: string }[]
   /** receiptId → 图片地址（管理端是 objectURL，公示页是匿名直链） */
   previews: Record<number, string>
+  /** 缩略图三态：取图还没回来是 loading，不能显示「加载失败」 */
+  thumbState: (id: number) => 'ok' | 'loading' | 'failed'
 }
 
 async function open(): Promise<{ wrapper: ReturnType<typeof mount>; vm: DialogVm }> {
@@ -119,6 +121,30 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
     expect(vm.receipts).toHaveLength(1)
     expect(vm.titles[11]).toBe('超市小票')
     expect(vm.dirty).toBe(false)
+    expect(vm.thumbState(11)).toBe('ok')
+  })
+
+  it('取图还没回来时是 loading 骨架，不是「图片加载失败」', async () => {
+    let resolveBlob: (blob: Blob) => void = () => {}
+    fetchReceiptBlob.mockReset().mockImplementation(
+      () =>
+        new Promise<Blob>((resolve) => {
+          resolveBlob = resolve
+        }),
+    )
+
+    const { vm } = await open()
+    expect(vm.thumbState(11)).toBe('loading')
+
+    resolveBlob(new Blob([new Uint8Array([1])], { type: 'image/png' }))
+    await flushPromises()
+    expect(vm.thumbState(11)).toBe('ok')
+  })
+
+  it('取图真的失败才显示「图片加载失败」', async () => {
+    fetchReceiptBlob.mockReset().mockRejectedValue(new Error('boom'))
+    const { vm } = await open()
+    expect(vm.thumbState(11)).toBe('failed')
   })
 
   it('选图只是暂存：不调上传接口，有未保存标记', async () => {

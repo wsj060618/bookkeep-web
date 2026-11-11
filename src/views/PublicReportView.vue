@@ -4,11 +4,13 @@ import { useRoute } from 'vue-router'
 import { fetchPublicReport } from '../api/public'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
 import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
+import TextPeekDialog from '../components/TextPeekDialog.vue'
 
 /** 收支对比图按需加载（ECharts 只在真要画图时才拉） */
 const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
 import type { PublicBookReport, PublicReport, ReportTransaction } from '../types/api'
 import { colorOf, iconOf } from '../utils/category'
+import { isTruncated } from '../utils/ellipsis'
 import { formatMoney } from '../utils/money'
 
 /**
@@ -66,6 +68,18 @@ const galleryHead = computed(() => {
   const tx = galleryTx.value
   return tx ? `${tx.categoryName} · ${tx.transDate} · ￥${tx.amount}` : ''
 })
+
+/* 被省略号截断的文字：点一下看全文 */
+const peekVisible = ref(false)
+const peekTitle = ref('')
+const peekText = ref('')
+
+function onPeek(event: MouseEvent, text: string | null, title: string): void {
+  if (!text || !isTruncated(event.currentTarget)) return
+  peekTitle.value = title
+  peekText.value = text
+  peekVisible.value = true
+}
 
 async function load(): Promise<void> {
   if (!token.value) {
@@ -214,13 +228,17 @@ onMounted(load)
             </span>
             <div class="tx-main">
               <div class="tx-line">
-                <span class="tx-category">{{ tx.categoryName }}</span>
+                <span class="tx-category" @click="onPeek($event, tx.categoryName, '分类')">{{
+                  tx.categoryName
+                }}</span>
                 <span class="tx-amount" :class="tx.type">
                   {{ tx.type === 'income' ? '+' : '-' }}￥{{ tx.amount }}
                 </span>
               </div>
               <div class="tx-line">
-                <span class="tx-note">{{ tx.note || '—' }}</span>
+                <span class="tx-note" @click="onPeek($event, tx.note, '备注')">{{
+                  tx.note || '—'
+                }}</span>
                 <span class="tx-tail">
                   <!-- 和管理端同一个徽标：点开看票据图集（只读） -->
                   <button
@@ -253,6 +271,8 @@ onMounted(load)
       :public-receipts="galleryTx?.receipts ?? []"
       :head-text="galleryHead"
     />
+
+    <TextPeekDialog v-model="peekVisible" :title="peekTitle" :text="peekText" />
   </div>
 </template>
 
@@ -428,21 +448,29 @@ onMounted(load)
   flex: 1;
   min-width: 0;
   display: grid;
+  /* 同流水页：隐式列按 max-content 取宽，长备注会撑破整行 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 
 .tx-line {
   display: flex;
+  min-width: 0;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
 
 .tx-category {
+  min-width: 0;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tx-amount {
+  flex: none;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   white-space: nowrap;
@@ -463,6 +491,8 @@ onMounted(load)
 }
 
 .tx-note {
+  /* 同流水页：没有 min-width:0 时 flex 子项按整段 nowrap 文本取宽，永远不省略 */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

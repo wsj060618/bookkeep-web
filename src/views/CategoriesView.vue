@@ -11,9 +11,11 @@ import {
 } from '../api/template'
 import CategoryFormDialog from '../components/CategoryFormDialog.vue'
 import TemplateFormDialog from '../components/TemplateFormDialog.vue'
+import TextPeekDialog from '../components/TextPeekDialog.vue'
 import { useShell } from '../composables/shell'
 import { useAuthStore } from '../stores/auth'
 import { colorOf, iconOf } from '../utils/category'
+import { isTruncated } from '../utils/ellipsis'
 import type { CategoryTemplate, TemplateItemInput, TxType } from '../types/api'
 
 /**
@@ -37,6 +39,16 @@ const templates = ref<CategoryTemplate[]>([])
 const templateId = ref<number>(BUILTIN_ID)
 const templateDialogVisible = ref(false)
 const savingTemplate = ref(false)
+
+/* 分类名被省略号截断时，点一下看全名 */
+const peekVisible = ref(false)
+const peekText = ref('')
+
+function onPeekName(event: MouseEvent, name: string): void {
+  if (!name || !isTruncated(event.currentTarget)) return
+  peekText.value = name
+  peekVisible.value = true
+}
 
 const selectedTemplate = computed(
   () => templates.value.find((t) => t.id === templateId.value) ?? templates.value[0] ?? null,
@@ -469,7 +481,7 @@ onMounted(async () => {
             @change="(checked: boolean | string | number) => toggleKey(itemKey(item), checked)"
           />
           <span class="cat-icon">{{ iconOf(item.icon) }}</span>
-          <span class="cat-name">{{ item.name }}</span>
+          <span class="cat-name" @click="onPeekName($event, item.name)">{{ item.name }}</span>
           <span class="cat-color" :style="{ background: colorOf(item.color) }" />
           <span class="cat-ops">
             <el-button text size="small" @click="openEdit(item)">编辑</el-button>
@@ -501,6 +513,8 @@ onMounted(async () => {
       :saving="savingTemplate"
       @submit="onTemplateSubmit"
     />
+
+    <TextPeekDialog v-model="peekVisible" title="分类名" :text="peekText" />
   </div>
 </template>
 
