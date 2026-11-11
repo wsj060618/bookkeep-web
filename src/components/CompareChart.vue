@@ -110,7 +110,11 @@ function buildOption(): EChartsCoreOption {
         barMaxWidth: 42,
         data: items.value.map((item) => ({
           value: item.value,
-          itemStyle: { color: item.color, borderRadius: [6, 6, 0, 0] },
+          itemStyle: {
+            color: item.color,
+            // 圆角永远在柱子「离 0 轴远」的那一端：向上的柱圆顶，向下的柱圆底
+            borderRadius: item.value < 0 ? [0, 0, 6, 6] : [6, 6, 0, 0],
+          },
         })),
         label: {
           show: true,

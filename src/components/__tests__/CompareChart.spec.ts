@@ -14,7 +14,7 @@ vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }))
 
 import CompareChart from '../CompareChart.vue'
 
-type BarDatum = { value: number }
+type BarDatum = { value: number; itemStyle: { borderRadius: number[] } }
 
 function lastBarOption(): {
   yAxis: { min?: number }
@@ -41,6 +41,12 @@ describe('CompareChart 柱状图', () => {
     expect(data.map((d) => d.value)).toEqual([0, 12, -12])
     // 不设 min，Y 轴才会同时容纳正负柱
     expect(option.yAxis.min).toBeUndefined()
+    // 圆角在远离 0 轴的那一端：正柱圆顶、负柱圆底
+    expect(data.map((d) => d.itemStyle.borderRadius)).toEqual([
+      [6, 6, 0, 0],
+      [6, 6, 0, 0],
+      [0, 0, 6, 6],
+    ])
 
     // 标签写「-￥12.00」而不是「￥-12.00」，和流水列表一致
     expect(option.series[0].label.formatter({ value: -12 })).toBe('-￥12.00')
