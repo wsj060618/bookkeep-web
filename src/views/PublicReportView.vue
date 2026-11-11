@@ -340,13 +340,14 @@ onMounted(load)
 }
 
 .value {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
+/* 三个数同样字号，只靠颜色区分：结余用主色（与统计页一致） */
 .value.strong {
-  font-size: 16px;
+  color: var(--el-color-primary);
 }
 
 .value.income {
@@ -507,6 +508,11 @@ onMounted(load)
 @media (max-width: 520px) {
   .numbers {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* 三列挤在一起，金额降一档防止长数字被截断 */
+  .value {
+    font-size: 14px;
   }
 
   /* 区间选择器独占一行：260px + 重置按钮在窄屏放不下 */
