@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
-/** 捕获 setOption 的入参：图表的约定（柱子一律朝上）用断言钉住，别只靠肉眼 */
+/** 捕获 setOption 的入参：图表的约定（负数柱朝下）用断言钉住，别只靠肉眼 */
 const setOption = vi.fn()
 
 vi.mock('echarts/core', () => ({
@@ -14,14 +14,13 @@ vi.mock('echarts/renderers', () => ({ CanvasRenderer: {} }))
 
 import CompareChart from '../CompareChart.vue'
 
-type BarDatum = { name: string; value: number; signed: number }
+type BarDatum = { value: number }
 
 function lastBarOption(): {
-  yAxis: { min: number }
+  yAxis: { min?: number }
   series: {
     data: BarDatum[]
     label: { formatter: (params: unknown) => string }
-    tooltip?: unknown
   }[]
   tooltip: { formatter: (params: unknown) => string }
 } {
@@ -30,7 +29,7 @@ function lastBarOption(): {
 }
 
 describe('CompareChart 柱状图', () => {
-  it('结余为负时柱子仍朝上：高度取绝对值，负号只出现在标签里', () => {
+  it('结余为负时柱子朝下：值保持带符号，Y 轴不钉死 0', () => {
     mount(CompareChart, {
       props: { type: 'bar', income: '0.00', expense: '12.00', balance: '-12.00' },
     })
@@ -38,16 +37,15 @@ describe('CompareChart 柱状图', () => {
     const option = lastBarOption()
     const data = option.series[0].data
 
-    // 高度全为非负（不会出现向下的柱子），Y 轴从 0 起
-    expect(data.map((d) => d.value)).toEqual([0, 12, 12])
-    expect(option.yAxis.min).toBe(0)
-    // 真实值（含符号）单独留在 signed 里给标签用
-    expect(data.map((d) => d.signed)).toEqual([0, 12, -12])
+    // 带符号的值原样交给 ECharts：负值就是向下的柱子
+    expect(data.map((d) => d.value)).toEqual([0, 12, -12])
+    // 不设 min，Y 轴才会同时容纳正负柱
+    expect(option.yAxis.min).toBeUndefined()
 
-    expect(option.series[0].label.formatter({ data: { signed: -12 } })).toBe('-￥12.00')
-    expect(option.series[0].label.formatter({ data: { signed: 12 } })).toBe('￥12.00')
-    // tooltip 也显示带符号的真实值，不能显示柱高
-    expect(option.tooltip.formatter([{ name: '结余', data: { signed: -12 } }])).toBe('结余<br/>-￥12.00')
+    // 标签写「-￥12.00」而不是「￥-12.00」，和流水列表一致
+    expect(option.series[0].label.formatter({ value: -12 })).toBe('-￥12.00')
+    expect(option.series[0].label.formatter({ value: 12 })).toBe('￥12.00')
+    expect(option.tooltip.formatter([{ name: '结余', value: -12 }])).toBe('结余<br/>-￥12.00')
   })
 
   it('正数结余照常显示为正', () => {

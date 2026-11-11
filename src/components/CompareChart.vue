@@ -10,7 +10,7 @@ import { CanvasRenderer } from 'echarts/renderers'
  * 「收支对比」图：柱状图（收入 / 支出 / 结余）与环形图（收支占比）。
  * <p>和分类占比图分开写：分类图的颜色取分类语义色、维度是「分类」；
  * 这张图固定三段（收入/支出/结余），颜色跟流水列表/统计卡片一致：收入绿、支出红、结余蓝。
- * <p>柱状图的柱子一律向上：结余为负时柱高取绝对值，负号只出现在标签上。
+ * <p>结余为负时柱子朝下（ECharts 原生表现），负号与方向一起表达「这段时间净流出」。
  */
 
 echarts.use([BarChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
@@ -39,17 +39,12 @@ function money(value: string): string {
   return `${n < 0 ? '-￥' : '￥'}${text}`
 }
 
-/** 结余可能是负数：柱子一律朝上（高度取绝对值），负号只由标签和 tooltip 表达，避免 Y 轴出现负区 */
+/** 结余可能是负数：柱子照实朝下，tooltip 与标签也给带符号的值 */
 const items = computed(() => [
   { name: '收入', value: Number(props.income), color: INCOME_COLOR },
   { name: '支出', value: Number(props.expense), color: EXPENSE_COLOR },
   { name: '结余', value: Number(props.balance), color: BALANCE_COLOR },
 ])
-
-/** 柱高一律用绝对值，真实带符号的值放在 signed 里给标签用 */
-const bars = computed(() =>
-  items.value.map((item) => ({ ...item, value: Math.abs(item.value), signed: item.value })),
-)
 
 function buildOption(): EChartsCoreOption {
   if (props.type === 'donut') {
@@ -79,7 +74,7 @@ function buildOption(): EChartsCoreOption {
             .filter((item) => item.name !== '结余')
             .map((item) => ({
               name: item.name,
-              value: Math.abs(item.value),
+              value: item.value,
               itemStyle: { color: item.color },
             })),
         },
@@ -93,20 +88,19 @@ function buildOption(): EChartsCoreOption {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
       formatter: (params: unknown) => {
-        const list = params as { name: string; data: { signed: number } }[]
-        return list.length ? `${list[0].name}<br/>${money(String(list[0].data.signed))}` : ''
+        const list = params as { name: string; value: number }[]
+        return list.length ? `${list[0].name}<br/>${money(String(list[0].value))}` : ''
       },
     },
     xAxis: {
       type: 'category',
-      data: bars.value.map((item) => item.name),
+      data: items.value.map((item) => item.name),
       axisTick: { show: false },
       axisLine: { lineStyle: { color: '#e4e7ed' } },
       axisLabel: { fontSize: 12, color: '#606266' },
     },
     yAxis: {
       type: 'value',
-      min: 0,
       axisLabel: { fontSize: 11, color: '#909399' },
       splitLine: { lineStyle: { color: '#f2f3f5' } },
     },
@@ -114,10 +108,8 @@ function buildOption(): EChartsCoreOption {
       {
         type: 'bar',
         barMaxWidth: 42,
-        data: bars.value.map((item) => ({
-          name: item.name,
+        data: items.value.map((item) => ({
           value: item.value,
-          signed: item.signed,
           itemStyle: { color: item.color, borderRadius: [6, 6, 0, 0] },
         })),
         label: {
@@ -125,7 +117,7 @@ function buildOption(): EChartsCoreOption {
           position: 'top',
           fontSize: 11,
           color: '#606266',
-          formatter: (params: unknown) => money(String((params as { data: { signed: number } }).data.signed)),
+          formatter: (params: unknown) => money(String((params as { value: number }).value)),
         },
       },
     ],
