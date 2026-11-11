@@ -157,6 +157,9 @@ onMounted(() => {
 <style scoped>
 .stats-page {
   display: grid;
+  /* minmax(0, 1fr)：子项默认 min-width:auto，日期框的 min-content 会把整页撑宽
+     （手机上表现为整页横向溢出、顶部导航栏却不跟着变宽） */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -177,15 +180,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .month-picker {
   width: 260px;
+  min-width: 0;
 }
 
 .numbers {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   gap: 12px;
   min-height: 90px;
 }
@@ -247,7 +252,7 @@ onMounted(() => {
 
 .charts-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -271,9 +276,15 @@ onMounted(() => {
   }
 }
 
+@media (max-width: 900px) {
+  .charts-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 520px) {
   .numbers {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .num-value {
@@ -287,6 +298,7 @@ onMounted(() => {
   .month-picker {
     flex: 1;
     width: auto;
+    min-width: 0;
   }
 }
 </style>
