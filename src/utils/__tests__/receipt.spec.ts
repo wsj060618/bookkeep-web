@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import {
   RECEIPT_MAX_BYTES,
   RECEIPT_MAX_PER_TRANSACTION,
+  compressReceiptImage,
   defaultReceiptTitle,
   formatSize,
   validateReceiptFile,
@@ -78,5 +79,63 @@ describe('formatSize', () => {
   it('脏数据兜底', () => {
     expect(formatSize(-1)).toBe('0KB')
     expect(formatSize(Number.NaN)).toBe('0KB')
+  })
+})
+
+/**
+ * 压图是**有损**的（存下来的就是压后的版本），所以「什么时候不压」比「怎么压」更要紧：
+ * 环境不支持、解码失败、小图、压完更大 —— 全都要原样放行，不能因为优化把上传搞挂。
+ */
+describe('compressReceiptImage', () => {
+  const originalCreateImageBitmap = (globalThis as { createImageBitmap?: unknown }).createImageBitmap
+
+  function stubBitmap(value: unknown): void {
+    Object.defineProperty(globalThis, 'createImageBitmap', {
+      value,
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'createImageBitmap', {
+      value: originalCreateImageBitmap,
+      configurable: true,
+      writable: true,
+    })
+    vi.restoreAllMocks()
+  })
+
+  it('环境不支持 createImageBitmap（老浏览器/测试环境）就原样返回', async () => {
+    stubBitmap(undefined)
+    const file = fileOf('image/jpeg', 5 * 1024 * 1024)
+    expect(await compressReceiptImage(file)).toBe(file)
+  })
+
+  it('解码失败（HEIC / 损坏文件）原样返回，让后端按魔数给友好提示', async () => {
+    stubBitmap(vi.fn().mockRejectedValue(new Error('decode failed')))
+    const file = fileOf('image/jpeg', 5 * 1024 * 1024)
+    expect(await compressReceiptImage(file)).toBe(file)
+  })
+
+  it('小图不重编码：尺寸没超上限、体积也不大，直接返回原文件', async () => {
+    const bitmap = { width: 800, height: 600, close: vi.fn() }
+    stubBitmap(vi.fn().mockResolvedValue(bitmap))
+    const file = fileOf('image/jpeg', 300 * 1024)
+
+    expect(await compressReceiptImage(file)).toBe(file)
+    expect(bitmap.close).toHaveBeenCalled()
+  })
+
+  it('canvas 拿不到 2d 上下文时也原样返回（不抛异常）', async () => {
+    stubBitmap(vi.fn().mockResolvedValue({ width: 4000, height: 3000, close: vi.fn() }))
+    vi.spyOn(document, 'createElement').mockReturnValue({
+      width: 0,
+      height: 0,
+      getContext: () => null,
+    } as unknown as HTMLElement)
+
+    const file = fileOf('image/jpeg', 5 * 1024 * 1024)
+    expect(await compressReceiptImage(file)).toBe(file)
   })
 })

@@ -15,6 +15,20 @@ export const RECEIPT_MAX_PER_TRANSACTION = 9
 /** 浏览器给的 MIME 只当提示，后端还会按魔数再判一次 */
 export const RECEIPT_ACCEPT = 'image/jpeg,image/png,image/webp'
 
+/**
+ * 上传前压图的上限（长边像素）。
+ * <p>为什么压：云服务器出网只有 2Mbps，一张 5MB 的手机原图点开要 20 秒。
+ * 2000px 折算约 250DPI（A4 宽度的收据），够看清金额/日期/明细；
+ * 只有「一张长图拍整条购物小票」这种极端情况末端小字会发糊。
+ * <p>要更清晰就把它调到 2560（体积翻倍、加载慢一倍），要更省流量就调到 1600。
+ */
+export const RECEIPT_MAX_EDGE = 2000
+
+/** 小图不重编码：JPEG 二次压缩只会掉画质，省不下多少 */
+export const RECEIPT_RECOMPRESS_ABOVE = 1.5 * 1024 * 1024
+
+const RECEIPT_JPEG_QUALITY = 0.85
+
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 /** 校验一个文件，返回错误文案；合法返回 null */
@@ -62,4 +76,59 @@ export function formatSize(bytes: number): string {
     return `${Math.round(bytes / 1024)}KB`
   }
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
+}
+
+/**
+ * 上传前把大图压到 `RECEIPT_MAX_EDGE` 内、JPEG q0.85。
+ * <p>**这一层是有损的**：存下来的、导出的 zip 里都是压缩后的版本。换来的是
+ * 「点开大图」从 20 秒变 3 秒。缩略图那一层才是无损的（另存一个派生文件，原图不动）。
+ * <p>四条兜底：环境不支持 `createImageBitmap`（测试/老浏览器）、解码失败（HEIC/损坏）、
+ * canvas 不可用、压完反而更大 —— 一律原样返回原文件；压缩永远不是上传失败的理由。
+ */
+export async function compressReceiptImage(file: File): Promise<File> {
+  if (typeof createImageBitmap !== 'function') {
+    return file
+  }
+
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(file)
+  } catch {
+    return file
+  }
+
+  try {
+    const longEdge = Math.max(bitmap.width, bitmap.height)
+    const scale = Math.min(1, RECEIPT_MAX_EDGE / longEdge)
+    if (scale === 1 && file.size <= RECEIPT_RECOMPRESS_ABOVE) {
+      return file
+    }
+
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      return file
+    }
+    // 透明区铺白：PNG 截图带 alpha，直接压成 JPEG 会变黑块
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+    ctx.drawImage(bitmap, 0, 0, width, height)
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', RECEIPT_JPEG_QUALITY),
+    )
+    if (!blob || blob.size >= file.size) {
+      return file
+    }
+    // 文件名保持不变：后端按魔数识别类型，标题默认取的就是这个文件名
+    return new File([blob], file.name, { type: 'image/jpeg', lastModified: file.lastModified })
+  } catch {
+    return file
+  } finally {
+    bitmap.close?.()
+  }
 }

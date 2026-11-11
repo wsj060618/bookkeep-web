@@ -3,6 +3,9 @@ import { del, get, getFile, postForm, put, type DownloadFile } from './request'
 
 /** 流水票据（PLAN §10.9）。所有接口都要登录，bookId 由后端从 current_book_id 推导 */
 
+/** 图片尺寸档：`thumb` = 480px 缩略图，`full` = 原图 */
+export type ReceiptImageSize = 'thumb' | 'full'
+
 /** GET /api/transactions/{transactionId}/receipts — 列表（不含文件内容） */
 export function listReceipts(transactionId: number): Promise<Receipt[]> {
   return get<Receipt[]>(`/transactions/${transactionId}/receipts`)
@@ -35,9 +38,20 @@ export function deleteReceipt(transactionId: number, receiptId: number): Promise
  * 取图片字节。
  * <p>登录态接口不能用 `<img src>` 直链（浏览器不会带 Authorization 头），
  * 所以这里取回 Blob，由调用方转成 objectURL 再喂给 img。
+ * <p>`thumb` 是后端生成的 480px JPEG（约 45KB）：云服务器出网只有 2Mbps，
+ * 画廊里拉原图一张要 10 秒，拉缩略图 0.2 秒。**网格/列表一律用 thumb，点开大图才要 full。**
  */
-export async function fetchReceiptBlob(transactionId: number, receiptId: number): Promise<Blob> {
-  const file = await getFile(`/transactions/${transactionId}/receipts/${receiptId}`)
+export async function fetchReceiptBlob(
+  transactionId: number,
+  receiptId: number,
+  size: ReceiptImageSize = 'full',
+): Promise<Blob> {
+  const file = await getFile(
+    `/transactions/${transactionId}/receipts/${receiptId}`,
+    size === 'thumb' ? { size: 'thumb' } : undefined,
+    // 原图可能有几 MB，30 秒默认超时在慢网下不够；缩略图 15 秒绰绰有余
+    size === 'thumb' ? 15_000 : 90_000,
+  )
   return file.blob
 }
 
@@ -62,6 +76,11 @@ export function importReceiptsZip(transactionId: number, file: File): Promise<Re
 }
 
 /** 公示页图片是匿名只读路径，可以直接拼给 `<img src>`（不带 token） */
-export function publicReceiptUrl(shareToken: string, receiptId: number): string {
-  return `/api/public/report/${encodeURIComponent(shareToken)}/receipts/${receiptId}`
+export function publicReceiptUrl(
+  shareToken: string,
+  receiptId: number,
+  size: ReceiptImageSize = 'full',
+): string {
+  const base = `/api/public/report/${encodeURIComponent(shareToken)}/receipts/${receiptId}`
+  return size === 'thumb' ? `${base}?size=thumb` : base
 }

@@ -156,8 +156,12 @@ export interface DownloadFile {
   filename: string
 }
 
-export async function getFile(url: string, params?: Record<string, unknown>): Promise<DownloadFile> {
-  const response = await httpFile.get<Blob>(url, { params })
+export async function getFile(
+  url: string,
+  params?: Record<string, unknown>,
+  timeout?: number,
+): Promise<DownloadFile> {
+  const response = await httpFile.get<Blob>(url, timeout === undefined ? { params } : { params, timeout })
   const contentType = String(response.headers['content-type'] ?? '')
 
   // 参数错误（如日期区间颠倒）是 HTTP 200 + JSON 信封：这里不分支就会把 JSON 存成 .csv

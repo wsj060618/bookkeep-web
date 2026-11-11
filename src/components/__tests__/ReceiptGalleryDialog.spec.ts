@@ -27,7 +27,10 @@ vi.mock('../../api/receipt', () => ({
   uploadReceipt: (...args: unknown[]) => uploadReceipt(...args),
   importReceiptsZip: (...args: unknown[]) => importReceiptsZip(...args),
   exportTransactionReceipts: (...args: unknown[]) => exportTransactionReceipts(...args),
-  publicReceiptUrl: (token: string, id: number) => `/api/public/report/${token}/receipts/${id}`,
+  publicReceiptUrl: (token: string, id: number, size: 'thumb' | 'full' = 'full') =>
+    size === 'thumb'
+      ? `/api/public/report/${token}/receipts/${id}?size=thumb`
+      : `/api/public/report/${token}/receipts/${id}`,
 }))
 
 vi.mock('../../api/request', () => ({ saveBlob: vi.fn() }))
@@ -56,12 +59,13 @@ const receipt: Receipt = {
 interface DialogVm {
   load: () => Promise<void>
   save: () => Promise<void>
-  onPick: (event: Event) => void
+  onPick: (event: Event) => Promise<void>
   onImportZip: (event: Event) => Promise<void>
   removeSaved: (r: Receipt) => void
   undoRemove: (r: Receipt) => void
   removePending: (index: number) => void
   exportZip: () => Promise<void>
+  openPreview: (key: string) => Promise<void>
   titles: Record<number, string>
   receipts: Receipt[]
   kept: Receipt[]
@@ -69,8 +73,13 @@ interface DialogVm {
   removed: Set<number>
   dirty: boolean
   importFailed: { file: string; reason: string }[]
-  /** receiptId → 图片地址（管理端是 objectURL，公示页是匿名直链） */
-  previews: Record<number, string>
+  /** receiptId → 缩略图地址（管理端是 objectURL，公示页是匿名直链） */
+  thumbs: Record<number, string>
+  /** receiptId → 原图 objectURL（点开大图才有） */
+  fulls: Record<number, string>
+  viewerOpen: boolean
+  /** 大图列表（长度与订单一致，切页时才把缩略图换成原图） */
+  viewerUrls: string[]
   /** 缩略图三态：取图还没回来是 loading，不能显示「加载失败」 */
   thumbState: (id: number) => 'ok' | 'loading' | 'failed'
 }
@@ -114,14 +123,35 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
     vi.restoreAllMocks()
   })
 
-  it('打开时按流水 id 拉列表并逐张取图', async () => {
+  it('打开时按流水 id 拉列表，网格只拉缩略图（不拉原图）', async () => {
     const { vm } = await open()
     expect(listReceipts).toHaveBeenCalledWith(7)
-    expect(fetchReceiptBlob).toHaveBeenCalledWith(7, 11)
+    expect(fetchReceiptBlob).toHaveBeenCalledWith(7, 11, 'thumb')
+    expect(fetchReceiptBlob).not.toHaveBeenCalledWith(7, 11, 'full')
     expect(vm.receipts).toHaveLength(1)
     expect(vm.titles[11]).toBe('超市小票')
     expect(vm.dirty).toBe(false)
     expect(vm.thumbState(11)).toBe('ok')
+  })
+
+  it('点开大图才拉原图，且只拉这一张', async () => {
+    const { vm } = await open()
+    fetchReceiptBlob.mockClear()
+
+    await vm.openPreview('r:11')
+
+    expect(fetchReceiptBlob).toHaveBeenCalledWith(7, 11, 'full')
+    expect(fetchReceiptBlob).toHaveBeenCalledTimes(1)
+    expect(vm.viewerOpen).toBe(true)
+  })
+
+  it('原图已缓存时再点开不再请求（关掉弹窗重开也一样）', async () => {
+    const { vm } = await open()
+    await vm.openPreview('r:11')
+    fetchReceiptBlob.mockClear()
+
+    await vm.openPreview('r:11')
+    expect(fetchReceiptBlob).not.toHaveBeenCalled()
   })
 
   it('取图还没回来时是 loading 骨架，不是「图片加载失败」', async () => {
@@ -273,7 +303,7 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
   it('关闭有未保存改动时弹确认；取消则留在弹窗', async () => {
     vi.spyOn(ElMessageBox, 'confirm').mockRejectedValue('cancel')
     const { vm } = await open()
-    vm.onPick(pickEvent([fileOf('image/png', 1024, '小票.png')]))
+    await vm.onPick(pickEvent([fileOf('image/png', 1024, '小票.png')]))
     await flushPromises()
 
     // before-close 是模板里的内联函数，这里直接验证 dirty 的状态语义
@@ -300,11 +330,16 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
     expect(listReceipts).not.toHaveBeenCalled()
     expect(fetchReceiptBlob).not.toHaveBeenCalled()
 
-    // 数据来自上级传入，图片直接是匿名地址
+    // 数据来自上级传入，图片直接是匿名地址（网格用 thumb，大图用原图）
     expect(vm.receipts).toHaveLength(1)
     expect(vm.titles[5]).toBe('超市小票')
-    expect(vm.previews[5]).toBe('/api/public/report/tk123/receipts/5')
+    expect(vm.thumbs[5]).toBe('/api/public/report/tk123/receipts/5?size=thumb')
     expect(vm.kept).toHaveLength(1)
+
+    // 公示页走直链，点开大图也不该发 blob 请求
+    await vm.openPreview('r:5')
+    expect(vm.viewerUrls).toEqual(['/api/public/report/tk123/receipts/5'])
+    expect(fetchReceiptBlob).not.toHaveBeenCalled()
     // 只读：没有任何待提交的改动
     expect(vm.pending).toHaveLength(0)
     expect(vm.removed.size).toBe(0)

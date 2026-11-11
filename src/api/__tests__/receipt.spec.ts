@@ -61,7 +61,15 @@ describe('receipt api', () => {
     getFile.mockResolvedValueOnce({ blob, filename: 'a.png' })
     const result = await api.fetchReceiptBlob(7, 3)
     expect(result).toBe(blob)
-    expect(getFile).toHaveBeenCalledWith('/transactions/7/receipts/3')
+    expect(getFile).toHaveBeenCalledWith('/transactions/7/receipts/3', undefined, 90_000)
+  })
+
+  it('缩略图带 size=thumb，并给更短的超时（小图不该等 90 秒）', async () => {
+    getFile.mockResolvedValueOnce({ blob: new Blob(['x']), filename: 'a.jpg' })
+
+    await api.fetchReceiptBlob(7, 3, 'thumb')
+
+    expect(getFile).toHaveBeenCalledWith('/transactions/7/receipts/3', { size: 'thumb' }, 15_000)
   })
 
   it('导出：账本级带区间（单笔改成逐张下载图片，不再有 zip 接口）', async () => {
@@ -75,5 +83,12 @@ describe('receipt api', () => {
   it('公示页图片 URL：拼在公开路径下并编码 token', () => {
     expect(api.publicReceiptUrl('abc123', 9)).toBe('/api/public/report/abc123/receipts/9')
     expect(api.publicReceiptUrl('a/b c', 9)).toBe('/api/public/report/a%2Fb%20c/receipts/9')
+    expect(api.publicReceiptUrl('abc123', 9, 'thumb')).toBe(
+      '/api/public/report/abc123/receipts/9?size=thumb',
+    )
+    // 编码必须发生在拼查询串之前，否则 ?size 会被 encode 掉
+    expect(api.publicReceiptUrl('a/b c', 9, 'thumb')).toBe(
+      '/api/public/report/a%2Fb%20c/receipts/9?size=thumb',
+    )
   })
 })
