@@ -43,7 +43,7 @@ export function deleteTransactions(ids: number[]): Promise<number> {
 /**
  * GET /api/transactions/export —— 成功是文件流（CSV / xlsx / zip），失败仍是 200 + JSON 信封。
  * `format=xlsx` 是带汇总与分类柱状图的真 Excel；`format=zip` 是**账本导出包**
- * （`流水.csv` + `manifest.csv` + 票据图片，可再导入）；默认 csv。
+ * （`流水.csv` + `manifest.csv` + `分类模板.json` + 票据图片，可再导入）；默认 csv。
  * 调用方拿到的是 {blob, filename}，用 request.ts 的 saveBlob 落盘。
  */
 export function exportTransactions(params: {

@@ -451,7 +451,7 @@ onMounted(() => {
             <el-dropdown-menu>
               <el-dropdown-item command="csv">CSV（通用）</el-dropdown-item>
               <el-dropdown-item command="xlsx">Excel（带统计图）</el-dropdown-item>
-              <el-dropdown-item command="zip" divided>账本导出（zip：流水 + 票据，可再导入）</el-dropdown-item>
+              <el-dropdown-item command="zip" divided>账本导出（zip：流水 + 图片 + 分类模板）</el-dropdown-item>
               <el-dropdown-item command="receipts">票据（zip：只要图片）</el-dropdown-item>
             </el-dropdown-menu>
           </template>
