@@ -594,6 +594,8 @@ onMounted(async () => {
 
 .cat-list {
   display: grid;
+  /* 同账本页：隐式列默认 auto，长分类名会把整行撑出屏幕 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   min-height: 40px;
 }

@@ -628,6 +628,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
+  min-width: 0;
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
@@ -651,6 +652,10 @@ onMounted(() => {
 .tx-list {
   min-height: 200px;
   display: grid;
+  /* minmax(0, 1fr)：隐式列默认 auto，长备注（nowrap）的 max-content 会把整行撑宽，
+     再被 overflow:hidden 裁掉——表现就是右侧「改/删」被切
+  */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   border-radius: 10px;
   background: var(--el-bg-color);

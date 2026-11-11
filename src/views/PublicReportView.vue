@@ -325,7 +325,7 @@ onMounted(load)
 
 .numbers {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -360,7 +360,7 @@ onMounted(load)
 
 .charts-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -403,6 +403,8 @@ onMounted(load)
   padding: 0;
   list-style: none;
   display: grid;
+  /* 同流水页：隐式列默认 auto，长备注会把列撑得比卡片宽 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 

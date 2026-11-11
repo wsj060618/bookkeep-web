@@ -622,6 +622,8 @@ onMounted(() => {
 .book-list {
   min-height: 120px;
   display: grid;
+  /* minmax(0, 1fr)：隐式列默认 auto，长账本名的 max-content 会把整行撑出屏幕 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 
