@@ -5,6 +5,7 @@ import type { ECharts, EChartsCoreOption } from 'echarts/core'
 import { BarChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { formatMoney } from '../utils/money'
 
 /**
  * 「收支对比」图：柱状图（收入 / 支出 / 结余）与环形图（收支占比）。
@@ -31,14 +32,6 @@ const el = ref<HTMLDivElement | null>(null)
 let chart: ECharts | null = null
 let observer: ResizeObserver | null = null
 
-
-function money(value: string): string {
-  const n = Number(value)
-  const text = Math.abs(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  // 负数写成「-￥12.00」而不是「￥-12.00」，和流水列表的「-￥」一致
-  return `${n < 0 ? '-￥' : '￥'}${text}`
-}
-
 /** 结余可能是负数：柱子照实朝下，tooltip 与标签也给带符号的值 */
 const items = computed(() => [
   { name: '收入', value: Number(props.income), color: INCOME_COLOR },
@@ -54,7 +47,7 @@ function buildOption(): EChartsCoreOption {
         trigger: 'item',
         formatter: (params: unknown) => {
           const p = params as { name: string; value: number; percent: number; marker: string }
-          return `${p.marker} ${p.name}<br/>${money(String(p.value))}（${p.percent}%）`
+          return `${p.marker} ${p.name}<br/>${formatMoney(p.value)}（${p.percent}%）`
         },
       },
       legend: { bottom: 0, icon: 'circle', itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 12 } },
@@ -89,7 +82,7 @@ function buildOption(): EChartsCoreOption {
       axisPointer: { type: 'shadow' },
       formatter: (params: unknown) => {
         const list = params as { name: string; value: number }[]
-        return list.length ? `${list[0].name}<br/>${money(String(list[0].value))}` : ''
+        return list.length ? `${list[0].name}<br/>${formatMoney(list[0].value)}` : ''
       },
     },
     xAxis: {
@@ -121,7 +114,7 @@ function buildOption(): EChartsCoreOption {
           position: 'top',
           fontSize: 11,
           color: '#606266',
-          formatter: (params: unknown) => money(String((params as { value: number }).value)),
+          formatter: (params: unknown) => formatMoney((params as { value: number }).value),
         },
       },
     ],

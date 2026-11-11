@@ -9,6 +9,7 @@ import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
 const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
 import type { PublicBookReport, PublicReport, ReportTransaction } from '../types/api'
 import { colorOf, iconOf } from '../utils/category'
+import { formatMoney } from '../utils/money'
 
 /**
  * 只读公示页 /report/{token}：免登录、只有账本名与金额、没有任何个人信息。
@@ -156,7 +157,7 @@ onMounted(load)
           </div>
           <div class="number">
             <span class="label">结余</span>
-            <span class="value strong">￥{{ current?.balance ?? '0.00' }}</span>
+            <span class="value strong">{{ formatMoney(current?.balance) }}</span>
           </div>
         </div>
       </section>
@@ -231,7 +232,7 @@ onMounted(load)
                   >
                     📎 {{ tx.receiptCount }}
                   </button>
-                  <span class="tx-date">{{ tx.transDate }} · 结余 ￥{{ tx.balanceAfter }}</span>
+                  <span class="tx-date">{{ tx.transDate }} · 结余 {{ formatMoney(tx.balanceAfter) }}</span>
                 </span>
               </div>
             </div>

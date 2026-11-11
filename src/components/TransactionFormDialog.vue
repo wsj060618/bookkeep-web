@@ -253,7 +253,7 @@ async function onSubmit(): Promise<void> {
     visible.value = false
     emit('saved')
   } catch {
-    // 提示已由 axios 拦截器统一弹出（如支出超余额的 400），这里只负责复位按钮
+    // 提示已由 axios 拦截器统一弹出（如分类不存在、归档只读的 400），这里只负责复位按钮
   } finally {
     submitting.value = false
   }

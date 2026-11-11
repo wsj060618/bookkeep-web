@@ -4,6 +4,7 @@ import { fetchCategoryStat, fetchSummary } from '../api/statistic'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
 import { useShell } from '../composables/shell'
 import type { CategoryStat, Summary, TxType } from '../types/api'
+import { formatMoney } from '../utils/money'
 
 /** 收支对比图按需加载（ECharts 只在真要画图时才拉） */
 const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
@@ -107,7 +108,7 @@ onMounted(() => {
       </div>
       <div class="num">
         <span class="num-label">结余</span>
-        <span class="num-value strong">￥{{ summary?.balance ?? '0.00' }}</span>
+        <span class="num-value strong">{{ formatMoney(summary?.balance) }}</span>
       </div>
     </section>
 
