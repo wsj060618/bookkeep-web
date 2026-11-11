@@ -16,13 +16,14 @@ export const RECEIPT_MAX_PER_TRANSACTION = 9
 export const RECEIPT_ACCEPT = 'image/jpeg,image/png,image/webp'
 
 /**
- * 上传前压图的上限（长边像素）。
- * <p>为什么压：云服务器出网只有 2Mbps，一张 5MB 的手机原图点开要 20 秒。
- * 2000px 折算约 250DPI（A4 宽度的收据），够看清金额/日期/明细；
- * 只有「一张长图拍整条购物小票」这种极端情况末端小字会发糊。
- * <p>要更清晰就把它调到 2560（体积翻倍、加载慢一倍），要更省流量就调到 1600。
+ * 上传前压图的**宽度**上限（像素）。
+ * <p>为什么按宽度而不是「长边」：手机长截图/长小票可能是 1084×17703，
+ * 按长边缩到 2000 会变成 122px 宽的竖条，字全糊 —— 2026-11-12 拿真图踩到过。
+ * 文字是横着排的，只要宽度够，图有多长都不影响可读性。
+ * <p>2000px 折算约 250DPI（A4 宽度的收据），够看清金额/日期/明细；
+ * 更清晰就调 2560（体积翻倍），更省流量就调 1600。
  */
-export const RECEIPT_MAX_EDGE = 2000
+export const RECEIPT_MAX_WIDTH = 2000
 
 /** 小图不重编码：JPEG 二次压缩只会掉画质，省不下多少 */
 export const RECEIPT_RECOMPRESS_ABOVE = 1.5 * 1024 * 1024
@@ -98,8 +99,8 @@ export async function compressReceiptImage(file: File): Promise<File> {
   }
 
   try {
-    const longEdge = Math.max(bitmap.width, bitmap.height)
-    const scale = Math.min(1, RECEIPT_MAX_EDGE / longEdge)
+    // 只按宽度缩：长截图（1:16 那种）保住宽度就有字，按长边缩只会缩成一条竖线
+    const scale = Math.min(1, RECEIPT_MAX_WIDTH / bitmap.width)
     if (scale === 1 && file.size <= RECEIPT_RECOMPRESS_ABOVE) {
       return file
     }

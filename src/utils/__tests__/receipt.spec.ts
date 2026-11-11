@@ -138,4 +138,55 @@ describe('compressReceiptImage', () => {
     const file = fileOf('image/jpeg', 5 * 1024 * 1024)
     expect(await compressReceiptImage(file)).toBe(file)
   })
+
+  /** 假 canvas：记录最终画布尺寸，toBlob 直接回调一个「压小了」的 blob */
+  function stubCanvas(outputBytes: number): { width: number; height: number; quality?: number } {
+    const record = { width: 0, height: 0 } as { width: number; height: number; quality?: number }
+    vi.spyOn(document, 'createElement').mockImplementation(
+      () =>
+        ({
+          get width() {
+            return record.width
+          },
+          set width(value: number) {
+            record.width = value
+          },
+          get height() {
+            return record.height
+          },
+          set height(value: number) {
+            record.height = value
+          },
+          getContext: () => ({ fillStyle: '', fillRect: vi.fn(), drawImage: vi.fn() }),
+          toBlob: (cb: (blob: Blob | null) => void, type: string, quality: number) => {
+            record.quality = quality
+            cb(new Blob([new Uint8Array(outputBytes)], { type }))
+          },
+        }) as unknown as HTMLElement,
+    )
+    return record
+  }
+
+  it('横图：按宽度缩到 2000', async () => {
+    stubBitmap(vi.fn().mockResolvedValue({ width: 4000, height: 3000, close: vi.fn() }))
+    const record = stubCanvas(800 * 1024)
+
+    const result = await compressReceiptImage(fileOf('image/jpeg', 5 * 1024 * 1024))
+
+    expect([record.width, record.height]).toEqual([2000, 1500])
+    expect(record.quality).toBe(0.85)
+    expect(result.type).toBe('image/jpeg')
+    expect(result.size).toBeLessThan(5 * 1024 * 1024)
+  })
+
+  it('手机长截图（1084×17703）：只转码不缩尺寸，宽度必须保住', async () => {
+    stubBitmap(vi.fn().mockResolvedValue({ width: 1084, height: 17703, close: vi.fn() }))
+    const record = stubCanvas(1300 * 1024)
+
+    const result = await compressReceiptImage(fileOf('image/png', 7064 * 1024))
+
+    // 按长边算会变成 122×2000，字全糊；按宽度算就是原样尺寸
+    expect([record.width, record.height]).toEqual([1084, 17703])
+    expect(result.size).toBeLessThan(7064 * 1024)
+  })
 })

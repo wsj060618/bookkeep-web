@@ -634,6 +634,8 @@ async function exportZip(): Promise<void> {
   width: 100%;
   height: 110px;
   object-fit: cover;
+  /* 长截图缩略图是「顶部裁切」的，对齐顶部才能看到抬头/金额，而不是中间一截 */
+  object-position: top;
   border-radius: 8px;
   background: #fff;
 }
