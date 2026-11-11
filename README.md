@@ -18,14 +18,15 @@
 |---|---|---|
 | `/login` `/register` | 登录 / 注册 | 注册两步：账号 → 账本名，成功后自动登录 |
 | `/forgot-password` `/reset-password` | 找回 / 重置密码 | 邮件里的一次性 token |
-| `/transactions` | 流水（默认首页） | 筛选、分页、导出、记一笔、票据图集 |
-| `/stats` | 收支统计 | 月度汇总、分类占比、收支对比 |
+| `/transactions` | 流水（默认首页） | 筛选、分页、导入、导出、记一笔、票据图集 |
+| `/stats` | 收支统计 | 按天区间汇总、分类占比、收支对比 |
 | `/books` | 账本 | 新建 / 改名 / 切换 / 归档 / 回收站 |
-| `/categories` | 分类模板 | 账号级模板，改一条存一条 |
+| `/categories` | 分类模板 | 账号级模板，改一条存一条；可导出/导入 JSON |
 | `/settings` | 账号设置 | 资料、改密码、注销 |
 | `/report/:token` | 公示页 | 免登录只读，可看票据 |
 
 登录后的页面统一套 `AppLayout`（桌面左侧竖栏，手机抽屉导航），「记一笔」「分享」两个弹窗挂在 layout 上共用。
+「记一笔」的入口按断点分开：桌面/平板是流水页筛选区最右边的按钮，手机是右下角浮动按钮（同一时间只出现一个）。
 
 
 ## 项目结构
@@ -48,6 +49,7 @@ bookkeep-web/
     │   ├── ReceiptGalleryDialog.vue  票据图集（管理端读写 / 公示页只读）
     │   ├── CategoryFormDialog.vue    分类表单（名称 + 图标 + 颜色）
     │   ├── TemplateFormDialog.vue    新建模板
+    │   ├── TextPeekDialog.vue        点省略号看全文（长备注/长名字）
     │   └── CategoryChart.vue CategoryChartCard.vue CompareChart.vue  图表
     ├── composables/
     │   ├── shell.ts            layout 向子页面提供的分类缓存、数据版本号、开弹窗
@@ -59,6 +61,9 @@ bookkeep-web/
     ├── utils/
     │   ├── validate.ts         邮箱 / 密码 / 金额 / 用户名规则（与后端同一条）
     │   ├── category.ts         图标与颜色的语义 key → emoji / 色值
+    │   ├── money.ts            金额格式化（负数写成 `-￥13.00`）
+    │   ├── pageSize.ts         每页条数预设 + 手输 + localStorage
+    │   ├── ellipsis.ts         判断文本是否被省略号截断（决定能否点开）
     │   ├── receipt.ts          票据大小、张数、默认标题
     │   └── token.ts            localStorage 读写
     └── views/                  10 个页面（见上表）
@@ -100,7 +105,9 @@ npm run preview    # 本地预览 dist
 只把 `dist/` 交给 nginx（本地单机部署或云端 compose 都是只读挂载）：
 
 - 本机：`robocopy dist D:\coding\bookkeep-server\deploy\web`
-- 云端：覆盖 `/opt/bookkeep-server/bookkeep-web/dist`，不用重启容器
+- 云端：`sudo unzip -o bookkeep-dist.zip -d /opt/bookkeep-server/bookkeep-web/dist` + `sudo chown -R wsj:wsj …`，**不用重启容器**（bind mount 立刻生效）
+
+只改前端时不需要碰后端 jar；一旦后端也变了，云端要重建 `app` 镜像（`docker compose up -d --build app`），`restart` 换不掉打进镜像的 jar。
 
 完整步骤见后端仓库的 `docs/部署文档.md`。
 
