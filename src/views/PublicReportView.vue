@@ -142,7 +142,7 @@ onMounted(load)
               end-placeholder="结束月份"
               @change="load"
             />
-            <el-button :disabled="!monthRange" size="small" @click="onReset">重置</el-button>
+            <el-button :disabled="!monthRange" @click="onReset">重置</el-button>
           </div>
         </div>
 
