@@ -72,11 +72,27 @@ async function onBatchDelete(): Promise<void> {
   }
 }
 
+/** 每页条数预设；也可以直接手输（后端 TransactionQuery.size 上限 100） */
+const PAGE_SIZES = [5, 10, 15, 20, 25, 30]
+const MAX_SIZE = 100
+const SIZE_KEY = 'bookkeep_page_size'
+
+/** 上次选的条数存本地，刷新后不用再改一遍 */
+function readSize(): number {
+  const saved = Number(localStorage.getItem(SIZE_KEY))
+  return Number.isInteger(saved) && saved >= 1 && saved <= MAX_SIZE ? saved : 10
+}
+
 const loading = ref(false)
 const list = ref<Transaction[]>([])
 const total = ref(0)
 const page = ref(1)
-const size = ref(10)
+const size = ref(readSize())
+
+/** 手输的值也留在选项里，否则选完只显示一个裸数字 */
+const sizeOptions = computed(() =>
+  PAGE_SIZES.includes(size.value) ? PAGE_SIZES : [...PAGE_SIZES, size.value].sort((a, b) => a - b),
+)
 const exporting = ref(false)
 
 const filterType = ref<TxType | ''>('')
@@ -177,7 +193,15 @@ function onPageChange(value: number): void {
 }
 
 /** 换每页条数必须回第 1 页：停在原来的页码上多半会越界 */
-function onSizeChange(): void {
+function onSizeSelect(value: unknown): void {
+  // allow-create 会把用户输入原样（字符串）传进来，非法值保持原样不动
+  const next = Math.floor(Number(value))
+  if (!Number.isFinite(next) || next < 1 || next > MAX_SIZE) {
+    ElMessage.warning(`每页条数只能是 1 ~ ${MAX_SIZE} 之间的整数`)
+    return
+  }
+  size.value = next
+  localStorage.setItem(SIZE_KEY, String(next))
   page.value = 1
   void loadList()
 }
@@ -443,15 +467,26 @@ onMounted(() => {
     </section>
 
     <footer class="pager">
+      <el-select
+        :model-value="size"
+        class="size-select"
+        size="small"
+        filterable
+        allow-create
+        default-first-option
+        :reserve-keyword="false"
+        @change="onSizeSelect"
+      >
+        <el-option v-for="n in sizeOptions" :key="n" :label="`${n} 条/页`" :value="n" />
+      </el-select>
+
       <el-pagination
         v-model:current-page="page"
-        v-model:page-size="size"
-        :page-sizes="[10, 20, 50, 100]"
+        :page-size="size"
         :total="total"
-        layout="total, sizes, prev, pager, next, jumper"
+        layout="total, prev, pager, next, jumper"
         size="small"
         background
-        @size-change="onSizeChange"
         @current-change="onPageChange"
       />
     </footer>
@@ -625,8 +660,15 @@ onMounted(() => {
 
 .pager {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
+  gap: 8px;
   margin-top: 16px;
+}
+
+.size-select {
+  width: 108px;
 }
 
 .import-tip {
@@ -693,6 +735,11 @@ onMounted(() => {
   /* 窄屏放不下「总数 + 条数 + 页码 + 跳页」：先藏跳页，保留总数与条数选择 */
   .pager :deep(.el-pagination__jump) {
     display: none;
+  }
+
+  /* 窄屏空间紧，条数选择压窄一点，给页码让位 */
+  .size-select {
+    width: 96px;
   }
 }
 </style>
