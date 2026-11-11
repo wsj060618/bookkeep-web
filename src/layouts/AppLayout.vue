@@ -514,7 +514,25 @@ onMounted(async () => {
   min-width: 0;
 }
 
+/* 长账本名要靠这里收缩：flex 项默认 min-width:auto，会被 max-content 撑到 549px，
+   整条 topbar 就横向溢出了（实测 360 屏 scrollWidth 603） */
+.tb-left {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.tb-left :deep(.el-dropdown) {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tb-right {
+  flex: none;
+}
+
 .book-switch {
+  display: block;
+  max-width: 100%;
   cursor: pointer;
   font-size: 16px;
   font-weight: 600;

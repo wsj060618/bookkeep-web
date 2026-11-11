@@ -16,9 +16,7 @@ import {
   updateBook,
 } from '../api/book'
 import { listTemplates } from '../api/template'
-import TextPeekDialog from '../components/TextPeekDialog.vue'
 import type { Book, BookTrash, CategoryTemplate } from '../types/api'
-import { isTruncated } from '../utils/ellipsis'
 import { useAuthStore } from '../stores/auth'
 
 /**
@@ -37,16 +35,6 @@ const tab = ref<'books' | 'trash'>('books')
 const loading = ref(false)
 const busy = ref(false)
 const trash = ref<BookTrash[]>([])
-
-/* 账本名被省略号截断时，点一下看全名 */
-const peekVisible = ref(false)
-const peekText = ref('')
-
-function onPeekName(event: MouseEvent, name: string): void {
-  if (!name || !isTruncated(event.currentTarget)) return
-  peekText.value = name
-  peekVisible.value = true
-}
 
 /* ---------- 勾选与批量删除 ---------- */
 
@@ -432,7 +420,7 @@ onMounted(() => {
 
           <div v-for="book in books" :key="book.id" class="book-row">
             <el-checkbox v-model="selectedBooks" :value="book.id" class="row-check" />
-            <span class="book-name" @click="onPeekName($event, book.name)">{{ book.name }}</span>
+            <span class="book-name">{{ book.name }}</span>
             <el-tag v-if="book.current" size="small" type="success">当前</el-tag>
             <el-tag v-if="book.archived" size="small" type="info">已归档</el-tag>
             <span v-if="book.semesterEnd" class="book-meta">截止 {{ book.semesterEnd }}</span>
@@ -492,12 +480,14 @@ onMounted(() => {
 
           <div v-for="item in trash" :key="item.id" class="book-row">
             <el-checkbox v-model="selectedTrash" :value="item.id" class="row-check" />
-            <span class="book-name" @click="onPeekName($event, item.name)">{{ item.name }}</span>
+            <span class="book-name">{{ item.name }}</span>
             <span class="trash-meta">
               {{ item.deletedAt.slice(0, 10) }} 删除 · 还剩 {{ daysLeft(item.expireAt) }} 天
             </span>
-            <el-button text size="small" type="primary" @click="onRestore(item)">恢复</el-button>
-            <el-button text size="small" type="danger" @click="onPurge(item)">彻底删除</el-button>
+            <span class="book-actions">
+              <el-button text size="small" type="primary" @click="onRestore(item)">恢复</el-button>
+              <el-button text size="small" type="danger" @click="onPurge(item)">彻底删除</el-button>
+            </span>
           </div>
         </div>
 
@@ -583,7 +573,6 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <TextPeekDialog v-model="peekVisible" title="账本名" :text="peekText" />
   </div>
 </template>
 
@@ -643,6 +632,9 @@ onMounted(() => {
 
 .book-row {
   display: flex;
+  /* 归档后多出「已归档」标签、按钮还从「归档」变「取消归档」：一行塞不下就整体换行，
+     绝不靠省略号把账本名裁掉（名字必须完整可读） */
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
@@ -651,12 +643,12 @@ onMounted(() => {
 }
 
 .book-name {
-  flex: 1;
+  /* 至少 200px：不够就独占一行；长英文/长串也能断行，不撑破父容器 */
+  flex: 1 1 200px;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-weight: 500;
+  line-height: 1.4;
 }
 
 .book-meta {
@@ -667,7 +659,15 @@ onMounted(() => {
 
 .book-actions {
   display: flex;
+  flex-wrap: wrap;
   flex: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+/* Element 给相邻按钮加了 12px 左边距，这里用 gap 控制，换行时不会多出缩进 */
+.book-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .trash-meta {
@@ -687,6 +687,15 @@ onMounted(() => {
   .trash-meta,
   .book-meta {
     display: none;
+  }
+
+  /* 名字换行后行高变大：勾选框对齐第一行，别垂直居中悬在中间 */
+  .book-row {
+    align-items: flex-start;
+  }
+
+  .row-check {
+    margin-top: 2px;
   }
 }
 </style>

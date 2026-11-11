@@ -18,6 +18,13 @@ import TxItem from '../components/TxItem.vue'
 import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
 import TextPeekDialog from '../components/TextPeekDialog.vue'
 import type { ImportResult, Transaction, TransactionQuery, TxType, ZipImportResult } from '../types/api'
+import {
+  MAX_PAGE_SIZE,
+  normalizePageSize,
+  pageSizeOptions,
+  readPageSize,
+  savePageSize,
+} from '../utils/pageSize'
 
 /**
  * 流水页：筛选 + 分页 + 导出 + 改/删。
@@ -73,27 +80,13 @@ async function onBatchDelete(): Promise<void> {
   }
 }
 
-/** 每页条数预设；也可以直接手输（后端 TransactionQuery.size 上限 100） */
-const PAGE_SIZES = [5, 10, 15, 20, 25, 30]
-const MAX_SIZE = 100
-const SIZE_KEY = 'bookkeep_page_size'
-
-/** 上次选的条数存本地，刷新后不用再改一遍 */
-function readSize(): number {
-  const saved = Number(localStorage.getItem(SIZE_KEY))
-  return Number.isInteger(saved) && saved >= 1 && saved <= MAX_SIZE ? saved : 10
-}
-
 const loading = ref(false)
 const list = ref<Transaction[]>([])
 const total = ref(0)
 const page = ref(1)
-const size = ref(readSize())
+const size = ref(readPageSize())
 
-/** 手输的值也留在选项里，否则选完只显示一个裸数字 */
-const sizeOptions = computed(() =>
-  PAGE_SIZES.includes(size.value) ? PAGE_SIZES : [...PAGE_SIZES, size.value].sort((a, b) => a - b),
-)
+const sizeOptions = computed(() => pageSizeOptions(size.value))
 const exporting = ref(false)
 
 const filterType = ref<TxType | ''>('')
@@ -195,14 +188,13 @@ function onPageChange(value: number): void {
 
 /** 换每页条数必须回第 1 页：停在原来的页码上多半会越界 */
 function onSizeSelect(value: unknown): void {
-  // allow-create 会把用户输入原样（字符串）传进来，非法值保持原样不动
-  const next = Math.floor(Number(value))
-  if (!Number.isFinite(next) || next < 1 || next > MAX_SIZE) {
-    ElMessage.warning(`每页条数只能是 1 ~ ${MAX_SIZE} 之间的整数`)
+  const next = normalizePageSize(value)
+  if (next === null) {
+    ElMessage.warning(`每页条数只能是 1 ~ ${MAX_PAGE_SIZE} 之间的整数`)
     return
   }
   size.value = next
-  localStorage.setItem(SIZE_KEY, String(next))
+  savePageSize(next)
   page.value = 1
   void loadList()
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { fetchPublicReport } from '../api/public'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
@@ -13,6 +14,13 @@ import type { PublicBookReport, PublicReport, ReportTransaction } from '../types
 import { colorOf, iconOf } from '../utils/category'
 import { isTruncated } from '../utils/ellipsis'
 import { formatMoney } from '../utils/money'
+import {
+  MAX_PAGE_SIZE,
+  normalizePageSize,
+  pageSizeOptions,
+  readPageSize,
+  savePageSize,
+} from '../utils/pageSize'
 
 /**
  * 只读公示页 /report/{token}：免登录、只有账本名与金额、没有任何个人信息。
@@ -77,9 +85,10 @@ const expenseCategories = computed(() => current.value?.expenseCategories ?? [])
 
 /* ---------- 明细分页：数据一次性拉回来，翻页只在本地切片（只读页，没有写操作要跟服务端同步） ---------- */
 
-const PAGE_SIZES = [10, 20, 50]
 const page = ref(1)
-const size = ref(10)
+/** 和流水页共用同一套预设 + 手输（localStorage 也同一个 key） */
+const size = ref(readPageSize())
+const sizeOptions = computed(() => pageSizeOptions(size.value))
 
 const total = computed(() => current.value?.transactions.length ?? 0)
 
@@ -90,6 +99,18 @@ const pagedTransactions = computed(() => {
 })
 
 const maxPage = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
+
+/** 换每页条数回第 1 页：停在原页码上多半会越界 */
+function onSizeSelect(value: unknown): void {
+  const next = normalizePageSize(value)
+  if (next === null) {
+    ElMessage.warning(`每页条数只能是 1 ~ ${MAX_PAGE_SIZE} 之间的整数`)
+    return
+  }
+  size.value = next
+  savePageSize(next)
+  page.value = 1
+}
 
 // 换账本 / 换区间 / 换每页条数后回到第一页，否则会停在一个不存在的页码上
 watch([activeBookId, dateRange, size], () => {
@@ -328,14 +349,23 @@ onMounted(load)
         </ul>
 
         <div v-if="total > 0" class="pager">
-          <el-select v-model="size" class="size-select" size="small">
-            <el-option v-for="n in PAGE_SIZES" :key="n" :label="`${n} 条/页`" :value="n" />
+          <el-select
+            :model-value="size"
+            class="size-select"
+            size="small"
+            filterable
+            allow-create
+            default-first-option
+            :reserve-keyword="false"
+            @change="onSizeSelect"
+          >
+            <el-option v-for="n in sizeOptions" :key="n" :label="`${n} 条/页`" :value="n" />
           </el-select>
           <el-pagination
             v-model:current-page="page"
             :page-size="size"
             :total="total"
-            :layout="isMobile ? 'prev, pager, next' : 'total, prev, pager, next'"
+            :layout="isMobile ? 'prev, pager, next' : 'total, prev, pager, next, jumper'"
             size="small"
             background
           />
