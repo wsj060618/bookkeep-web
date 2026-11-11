@@ -22,15 +22,32 @@ const token = computed(() => String(route.params.token ?? ''))
 const report = ref<PublicReport | null>(null)
 const loading = ref(false)
 const failed = ref(false)
-const month = ref('')
+/** 空 = 全部时间；有值 = [开始月, 结束月]，都是 yyyy-MM */
+const monthRange = ref<[string, string] | null>(null)
 /** 当前查看的账本：一条链接可以带多本，用标签页切换 */
 const activeBookId = ref<number | null>(null)
+
+const startMonth = computed(() => monthRange.value?.[0])
+const endMonth = computed(() => monthRange.value?.[1])
+
+const rangeText = computed(() => {
+  if (!startMonth.value && !endMonth.value) return '全部时间'
+  return `${startMonth.value || '最早'} ~ ${endMonth.value || '至今'}`
+})
 
 const books = computed(() => report.value?.books ?? [])
 const current = computed<PublicBookReport | null>(() => {
   if (!books.value.length) return null
   return books.value.find((b) => b.bookId === activeBookId.value) ?? books.value[0]
 })
+
+/**
+ * 图里的「结余」柱是区间收支差，和卡片上的「结余」（区间末账户余额）不是一个东西：
+ * 余额通常大得多，混在一根坐标轴上另外两根柱会被压扁。
+ */
+const chartBalance = computed(
+  () => (Number(current.value?.income ?? 0) - Number(current.value?.expense ?? 0)).toFixed(2),
+)
 
 const incomeCategories = computed(() => current.value?.incomeCategories ?? [])
 const expenseCategories = computed(() => current.value?.expenseCategories ?? [])
@@ -57,10 +74,8 @@ async function load(): Promise<void> {
   loading.value = true
   failed.value = false
   try {
-    const resp = await fetchPublicReport(token.value, month.value || undefined)
+    const resp = await fetchPublicReport(token.value, startMonth.value, endMonth.value)
     report.value = resp
-    // 回显后端实际统计的月份（不传时是当月）
-    month.value = resp.books[0]?.month ?? ''
     // 保持当前选中的账本；它不在这次结果里（比如被彻底删了）就回到第一本
     if (!resp.books.some((b) => b.bookId === activeBookId.value)) {
       activeBookId.value = resp.books[0]?.bookId ?? null
@@ -74,9 +89,15 @@ async function load(): Promise<void> {
   }
 }
 
+/** 重置：清空区间，回到「全部时间」 */
+function onReset(): void {
+  monthRange.value = null
+  void load()
+}
+
 // 同一个人可能改地址栏里的 token 直接换一条链接看
 watch(token, () => {
-  month.value = ''
+  monthRange.value = null
   activeBookId.value = null
   void load()
 })
@@ -107,17 +128,21 @@ onMounted(load)
     <template v-else>
       <section v-loading="loading" class="card">
         <div class="card-head">
-          <span class="month-label">{{ current?.month ?? '' }} 收支</span>
+          <span class="month-label">{{ rangeText }}</span>
 
-          <el-date-picker
-            v-model="month"
-            class="month-picker"
-            type="month"
-            value-format="YYYY-MM"
-            placeholder="选择月份"
-            :clearable="false"
-            @change="load"
-          />
+          <div class="range-actions">
+            <el-date-picker
+              v-model="monthRange"
+              class="month-picker"
+              type="monthrange"
+              value-format="YYYY-MM"
+              range-separator="至"
+              start-placeholder="开始月份"
+              end-placeholder="结束月份"
+              @change="load"
+            />
+            <el-button :disabled="!monthRange" size="small" @click="onReset">重置</el-button>
+          </div>
         </div>
 
         <div class="numbers">
@@ -130,12 +155,8 @@ onMounted(load)
             <span class="value expense">-￥{{ current?.expense ?? '0.00' }}</span>
           </div>
           <div class="number">
-            <span class="label">本月结余</span>
-            <span class="value">￥{{ current?.balance ?? '0.00' }}</span>
-          </div>
-          <div class="number">
-            <span class="label">累计结余</span>
-            <span class="value strong">￥{{ current?.totalBalance ?? '0.00' }}</span>
+            <span class="label">结余</span>
+            <span class="value strong">￥{{ current?.balance ?? '0.00' }}</span>
           </div>
         </div>
       </section>
@@ -150,7 +171,7 @@ onMounted(load)
               type="bar"
               :income="current?.income ?? '0.00'"
               :expense="current?.expense ?? '0.00'"
-              :balance="current?.balance ?? '0.00'"
+              :balance="chartBalance"
             />
           </div>
           <div class="compare-block">
@@ -159,7 +180,7 @@ onMounted(load)
               type="donut"
               :income="current?.income ?? '0.00'"
               :expense="current?.expense ?? '0.00'"
-              :balance="current?.balance ?? '0.00'"
+              :balance="chartBalance"
             />
           </div>
         </div>
@@ -183,7 +204,7 @@ onMounted(load)
       <section v-loading="loading" class="card">
         <h2 class="card-title">明细（按日期升序，结余为逐行累计）</h2>
 
-        <p v-if="!loading && !current?.transactions.length" class="empty">本月还没有流水</p>
+        <p v-if="!loading && !current?.transactions.length" class="empty">这段时间还没有流水</p>
 
         <ul class="tx-list">
           <li v-for="(tx, index) in current?.transactions" :key="index" class="tx-item">
@@ -291,13 +312,19 @@ onMounted(load)
   color: var(--el-text-color-secondary);
 }
 
+.range-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .month-picker {
-  width: 130px;
+  width: 260px;
 }
 
 .numbers {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -478,7 +505,22 @@ onMounted(load)
 
 @media (max-width: 520px) {
   .numbers {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* 区间选择器独占一行：260px + 重置按钮在窄屏放不下 */
+  .card-head {
+    align-items: stretch;
+  }
+
+  .range-actions {
+    width: 100%;
+  }
+
+  .month-picker {
+    flex: 1;
+    width: auto;
+    min-width: 0;
   }
 
   /* 极窄屏：备注独占一行，避免日期/徽标被挤掉 */

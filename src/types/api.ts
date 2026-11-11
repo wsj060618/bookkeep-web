@@ -284,12 +284,14 @@ export interface ZipImportResult {
 export interface PublicBookReport {
   bookId: number
   bookName: string
-  /** yyyy-MM */
-  month: string
+  /** yyyy-MM；null = 该端不限（都不传 = 全部时间） */
+  startMonth: string | null
+  /** yyyy-MM；null = 该端不限 */
+  endMonth: string | null
   income: string
   expense: string
+  /** 区间末（结束月最后一天）的账户余额；结束月份不限时 = 当前余额 */
   balance: string
-  totalBalance: string
   expenseCategories: CategoryStat[]
   incomeCategories: CategoryStat[]
   /** 按日期升序 */
