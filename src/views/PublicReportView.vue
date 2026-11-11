@@ -5,6 +5,7 @@ import { fetchPublicReport } from '../api/public'
 import CategoryChartCard from '../components/CategoryChartCard.vue'
 import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
 import TextPeekDialog from '../components/TextPeekDialog.vue'
+import { useIsMobile } from '../composables/useIsMobile'
 
 /** 收支对比图按需加载（ECharts 只在真要画图时才拉） */
 const CompareChart = defineAsyncComponent(() => import('../components/CompareChart.vue'))
@@ -21,6 +22,7 @@ import { formatMoney } from '../utils/money'
 
 const route = useRoute()
 const token = computed(() => String(route.params.token ?? ''))
+const isMobile = useIsMobile()
 
 const report = ref<PublicReport | null>(null)
 const loading = ref(false)
@@ -54,6 +56,31 @@ const chartBalance = computed(
 
 const incomeCategories = computed(() => current.value?.incomeCategories ?? [])
 const expenseCategories = computed(() => current.value?.expenseCategories ?? [])
+
+/* ---------- 明细分页：数据一次性拉回来，翻页只在本地切片（只读页，没有写操作要跟服务端同步） ---------- */
+
+const PAGE_SIZES = [10, 20, 50]
+const page = ref(1)
+const size = ref(10)
+
+const total = computed(() => current.value?.transactions.length ?? 0)
+
+const pagedTransactions = computed(() => {
+  const list = current.value?.transactions ?? []
+  const start = (page.value - 1) * size.value
+  return list.slice(start, start + size.value)
+})
+
+const maxPage = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
+
+// 换账本 / 换区间 / 换每页条数后回到第一页，否则会停在一个不存在的页码上
+watch([activeBookId, monthRange, size], () => {
+  page.value = 1
+})
+
+watch(maxPage, (max) => {
+  if (page.value > max) page.value = max
+})
 
 /* 票据图集：点徽标打开，只读 */
 const galleryVisible = ref(false)
@@ -222,7 +249,7 @@ onMounted(load)
         <p v-if="!loading && !current?.transactions.length" class="empty">这段时间还没有流水</p>
 
         <ul class="tx-list">
-          <li v-for="(tx, index) in current?.transactions" :key="index" class="tx-item">
+          <li v-for="(tx, index) in pagedTransactions" :key="`${page}-${index}`" class="tx-item">
             <span class="tx-icon" :style="{ background: colorOf(tx.categoryColor) + '22' }">
               {{ iconOf(tx.categoryIcon) }}
             </span>
@@ -256,6 +283,20 @@ onMounted(load)
             </div>
           </li>
         </ul>
+
+        <div v-if="total > 0" class="pager">
+          <el-select v-model="size" class="size-select" size="small">
+            <el-option v-for="n in PAGE_SIZES" :key="n" :label="`${n} 条/页`" :value="n" />
+          </el-select>
+          <el-pagination
+            v-model:current-page="page"
+            :page-size="size"
+            :total="total"
+            :layout="isMobile ? 'prev, pager, next' : 'total, prev, pager, next'"
+            size="small"
+            background
+          />
+        </div>
       </section>
 
       <footer class="footer">
@@ -530,16 +571,30 @@ onMounted(load)
   text-align: center;
 }
 
+/* 明细分页：和管理页同一套（每页条数 + 页码） */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.size-select {
+  width: 104px;
+}
+
 @media (max-width: 900px) {
   .charts-row,
   .compare-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 520px) {
   .numbers {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   /* 三列挤在一起，金额降一档防止长数字被截断 */
