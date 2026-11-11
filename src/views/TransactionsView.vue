@@ -17,7 +17,14 @@ import { useAuthStore } from '../stores/auth'
 import TxItem from '../components/TxItem.vue'
 import ReceiptGalleryDialog from '../components/ReceiptGalleryDialog.vue'
 import TextPeekDialog from '../components/TextPeekDialog.vue'
-import type { ImportResult, Transaction, TransactionQuery, TxType, ZipImportResult } from '../types/api'
+import type {
+  ImportResult,
+  MissingCategory,
+  Transaction,
+  TransactionQuery,
+  TxType,
+  ZipImportResult,
+} from '../types/api'
 import {
   MAX_PAGE_SIZE,
   normalizePageSize,
@@ -262,11 +269,14 @@ const pickedFile = ref<File | null>(null)
 const importResult = ref<ImportResult | null>(null)
 /** 导入压缩包时的结果（流水与票据分开） */
 const zipResult = ref<ZipImportResult | null>(null)
+/** 文件里用到、账本还没有的分类：非空时后端一行都没导，等用户决定要不要建 */
+const missingCategories = ref<MissingCategory[]>([])
 
 function openImport(): void {
   pickedFile.value = null
   importResult.value = null
   zipResult.value = null
+  missingCategories.value = []
   importVisible.value = true
 }
 
@@ -274,6 +284,7 @@ function onPickFile(uploadFile: { raw?: File }): void {
   pickedFile.value = uploadFile.raw ?? null
   importResult.value = null
   zipResult.value = null
+  missingCategories.value = []
 }
 
 /** 模板就是一行表头 + 一行示例，用户照着填最省事 */
@@ -285,15 +296,24 @@ function downloadTemplate(): void {
   saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), '流水导入模板.csv')
 }
 
-async function onImport(): Promise<void> {
+async function onImport(createMissing = false): Promise<void> {
   const file = pickedFile.value
   if (!file || importing.value) return
   importing.value = true
   try {
     // .zip = 账本包（流水 + 票据一起），.csv = 只有流水
-    if (file.name.toLowerCase().endsWith('.zip')) {
-      zipResult.value = await importTransactionsZip(file)
+    const isZip = file.name.toLowerCase().endsWith('.zip')
+
+    if (isZip) {
+      zipResult.value = await importTransactionsZip(file, createMissing)
       const result = zipResult.value
+      if (result.missingCategories.length) {
+        // 后端一行都没写：先把「缺哪些分类」摆出来，让用户决定建不建
+        missingCategories.value = result.missingCategories
+        zipResult.value = null
+        return
+      }
+      missingCategories.value = []
       ElMessage.success(`已导入 ${result.success} 笔流水、${result.receipts.success} 张票据`)
       if (result.success > 0) {
         shell.notifyTxChanged()
@@ -304,8 +324,14 @@ async function onImport(): Promise<void> {
       return
     }
 
-    importResult.value = await importTransactions(file)
+    importResult.value = await importTransactions(file, createMissing)
     const result = importResult.value
+    if (result.missingCategories.length) {
+      missingCategories.value = result.missingCategories
+      importResult.value = null
+      return
+    }
+    missingCategories.value = []
     if (result.success > 0) {
       ElMessage.success(`已导入 ${result.success} 笔`)
       // 让列表与统计页都刷新（版本号 +1）
@@ -505,7 +531,7 @@ onMounted(() => {
         <br />② <b>ZIP 账本包</b>（流水 + 票据一起）：用本系统「导出 → 账本导出（zip）」生成的包，
         里面自带 manifest.csv、流水.csv 和图片，能一次还原到这个账本（≤200MB，单张图片 ≤10MB）。
         <br />金额需在 <b>0.01 ~ 999,999.99</b> 之间、最多两位小数；分类必须在当前账本里，
-        <b>不会自动新建分类</b>。
+        缺失时会先问你要不要新建（新建的分类会同时加进当前分类模板）。
       </p>
 
       <div class="import-row">
@@ -519,6 +545,24 @@ onMounted(() => {
         </el-upload>
         <el-button link type="primary" @click="downloadTemplate">下载模板</el-button>
         <span v-if="pickedFile" class="import-file">{{ pickedFile.name }}</span>
+      </div>
+
+      <!-- 缺分类：后端一行都没导，这里让用户先决定 -->
+      <div v-if="missingCategories.length" class="import-result">
+        <p class="import-summary">
+          文件里有 <b>{{ missingCategories.length }}</b> 个分类当前账本没有，
+          <b>还没有导入任何数据</b>：
+        </p>
+        <el-table :data="missingCategories" size="small" max-height="200">
+          <el-table-column prop="name" label="分类名" />
+          <el-table-column label="方向" width="90">
+            <template #default="{ row }">{{ row.type === 'income' ? '收入' : '支出' }}</template>
+          </el-table-column>
+        </el-table>
+        <p class="import-sub">
+          点「新建分类并导入」会自动建好这些分类（同时加进当前分类模板），然后接着导入；
+          不新建的话，先去「分类」页按同名同方向建好再导一次。
+        </p>
       </div>
 
       <div v-if="importResult" class="import-result">
@@ -563,10 +607,19 @@ onMounted(() => {
       <template #footer>
         <el-button @click="importVisible = false">关闭</el-button>
         <el-button
+          v-if="missingCategories.length"
+          type="primary"
+          :loading="importing"
+          @click="onImport(true)"
+        >
+          新建分类并导入
+        </el-button>
+        <el-button
+          v-else
           type="primary"
           :disabled="!pickedFile"
           :loading="importing"
-          @click="onImport"
+          @click="onImport()"
         >
           开始导入
         </el-button>

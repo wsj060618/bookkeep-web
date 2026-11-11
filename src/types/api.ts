@@ -258,9 +258,17 @@ export interface ImportFailedRow {
   reason: string
 }
 
+/** 文件里用到、账本还没有的分类；非空时后端一行都没导 */
+export interface MissingCategory {
+  name: string
+  /** income / expense */
+  type: 'income' | 'expense'
+}
+
 export interface ImportResult {
   success: number
   failed: ImportFailedRow[]
+  missingCategories: MissingCategory[]
 }
 
 export interface ReceiptImportFailed {
@@ -278,6 +286,7 @@ export interface ZipImportResult {
   success: number
   failed: ImportFailedRow[]
   receipts: ReceiptImportResult
+  missingCategories: MissingCategory[]
 }
 
 /** 公示页里的一本账本 */

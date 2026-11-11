@@ -55,21 +55,24 @@ export function exportTransactions(params: {
 }
 
 /**
- * POST /api/transactions/import（multipart）—— CSV / xlsx。
- * 行级失败不阻塞其它行，返回 `{success, failed:[{line, reason}]}`。
+ * POST /api/transactions/import（multipart）—— CSV。
+ * 行级失败不阻塞其它行，返回 `{success, failed:[{line, reason}], missingCategories}`。
+ * `createMissing=true` 时把文件里用到、账本还没有的分类一起建掉（用户确认过才传）。
  */
-export function importTransactions(file: File): Promise<ImportResult> {
+export function importTransactions(file: File, createMissing = false): Promise<ImportResult> {
   const form = new FormData()
   form.append('file', file)
+  if (createMissing) form.append('createMissing', 'true')
   return postForm<ImportResult>('/transactions/import', form)
 }
 
 /**
  * POST /api/transactions/import/zip —— 本系统「账本导出」生成的包（manifest + 流水.csv + 图片）。
- * 流水与票据在同一份响应里分开报。
+ * 流水与票据在同一份响应里分开报；缺分类时同样整包不写，返回 `missingCategories`。
  */
-export function importTransactionsZip(file: File): Promise<ZipImportResult> {
+export function importTransactionsZip(file: File, createMissing = false): Promise<ZipImportResult> {
   const form = new FormData()
   form.append('file', file)
+  if (createMissing) form.append('createMissing', 'true')
   return postForm<ZipImportResult>('/transactions/import/zip', form)
 }
