@@ -336,7 +336,7 @@ async function onSubmit(): Promise<void> {
           </div>
           <label v-if="canAddMore" class="receipt-add" :class="{ busy: uploading }">
             <input type="file" :accept="RECEIPT_ACCEPT" multiple hidden @change="onPickReceipts" />
-            📎 选择图片（jpg/png/webp，单张 ≤5MB）
+            📎 选择图片（jpg/png/webp，单张 ≤10MB）
           </label>
         </div>
       </el-form-item>

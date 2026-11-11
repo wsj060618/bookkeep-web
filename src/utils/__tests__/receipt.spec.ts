@@ -33,11 +33,11 @@ describe('validateReceiptFile', () => {
     expect(validateReceiptFile(fileOf('application/pdf', 1024), 0)).toBe('只支持 jpg / png / webp 图片')
   })
 
-  it('边界：正好 5MB 放行，多 1 字节拒绝，提示里带实际大小', () => {
+  it('边界：正好 10MB 放行，多 1 字节拒绝，提示里带实际大小', () => {
     expect(validateReceiptFile(fileOf('image/png', RECEIPT_MAX_BYTES), 0)).toBeNull()
     const message = validateReceiptFile(fileOf('image/png', RECEIPT_MAX_BYTES + 1), 0)
-    expect(message).toContain('5MB')
-    expect(message).toContain('5.0MB')
+    expect(message).toContain('10MB')
+    expect(message).toContain('10.0MB')
   })
 
   it('单笔已有 9 张就不能再加', () => {

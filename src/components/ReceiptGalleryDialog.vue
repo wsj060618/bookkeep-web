@@ -400,7 +400,7 @@ async function exportZip(): Promise<void> {
         <input type="file" :accept="RECEIPT_ACCEPT" multiple hidden @change="onPick" />
         <span class="add-plus">+</span>
         <span class="add-text">添加图片</span>
-        <span class="add-hint">jpg/png/webp · ≤5MB</span>
+        <span class="add-hint">jpg/png/webp · ≤10MB</span>
       </label>
     </div>
 
@@ -408,7 +408,7 @@ async function exportZip(): Promise<void> {
     <div v-if="!readonly" class="zip-row">
       <label class="zip-btn" :class="{ busy: importing }">
         <input type="file" accept=".zip" hidden @change="onImportZip" />
-        📦 导入压缩包（多张图打包，立即生效）
+        📦 导入压缩包（多张图打包，立即生效，≤200MB）
       </label>
     </div>
 

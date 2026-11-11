@@ -201,11 +201,11 @@ describe('ReceiptGalleryDialog（草稿 → 保存）', () => {
     expect(wrapper.emitted('update:modelValue')).toBeFalsy() // 没关弹窗
   })
 
-  it('选图校验：非法类型 / 超 5MB / 超 9 张都不进 pending', async () => {
+  it('选图校验：非法类型 / 超 10MB / 超 9 张都不进 pending', async () => {
     const { vm } = await open()
 
     vm.onPick(pickEvent([fileOf('application/pdf', 1024)]))
-    vm.onPick(pickEvent([fileOf('image/png', 5 * 1024 * 1024 + 1)]))
+    vm.onPick(pickEvent([fileOf('image/png', 10 * 1024 * 1024 + 1)]))
     await flushPromises()
     expect(vm.pending).toHaveLength(0)
 

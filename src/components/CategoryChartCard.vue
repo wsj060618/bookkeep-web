@@ -15,7 +15,6 @@ const props = defineProps<{
   title: string
   tone: 'income' | 'expense'
   items: CategoryStat[]
-  emptyText?: string
 }>()
 
 type ChartType = 'bar' | 'pie' | 'donut'
@@ -40,8 +39,8 @@ const total = computed(() => {
       </el-radio-group>
     </header>
 
-    <CategoryChart v-if="items.length" :items="items" :type="chartType" />
-    <p v-else class="chart-empty">{{ emptyText ?? `本月还没有${title}` }}</p>
+    <!-- 没有数据也照常画空图表（和「收支对比」一致），不写「本月还没有收入」这类文案 -->
+    <CategoryChart :items="items" :type="chartType" />
   </section>
 </template>
 
@@ -83,13 +82,5 @@ const total = computed(() => {
 
 .chart-switch {
   margin-left: auto;
-}
-
-.chart-empty {
-  margin: 0;
-  padding: 120px 0;
-  text-align: center;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 </style>

@@ -42,6 +42,9 @@ function percentOf(index: number): string {
   return props.items[index] ? `${props.items[index].percent}%` : ''
 }
 
+/** 没有数据时给一个 0 值占位：ECharts 拿到空数组连坐标轴都不画，整块会变成白板 */
+const isEmpty = computed(() => props.items.length === 0)
+
 /** 分类太多时（>8）不在扇区外挂名字，交给图例 + tooltip —— 否则标签会挤成一团 */
 const showSliceLabels = computed(() => props.type !== 'bar' && props.items.length <= 8)
 
@@ -65,7 +68,8 @@ function barOption(): EChartsCoreOption {
     },
     xAxis: {
       type: 'category',
-      data: props.items.map((item) => item.categoryName),
+      // 空数据时给一个空分类，轴框才画得出来（柱子高度 0，看不见）
+      data: isEmpty.value ? [''] : props.items.map((item) => item.categoryName),
       axisTick: { show: false },
       axisLine: { lineStyle: { color: '#e4e7ed' } },
       axisLabel: {
@@ -80,6 +84,8 @@ function barOption(): EChartsCoreOption {
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: {
+        // 空数据时纵轴只有 0 / 0.2 / 0.4 这种刻度，对金额没意义，直接不显示
+        show: !isEmpty.value,
         fontSize: 11,
         color: '#909399',
         formatter: (value: number) => (value >= 10000 ? `${value / 10000}万` : String(value)),
@@ -90,13 +96,15 @@ function barOption(): EChartsCoreOption {
       {
         type: 'bar',
         barMaxWidth: 26,
-        data: props.items.map((item, index) => ({
-          value: Number(item.amount),
-          itemStyle: { color: palette.value[index], borderRadius: [6, 6, 0, 0] },
-        })),
+        data: isEmpty.value
+          ? [{ value: 0 }]
+          : props.items.map((item, index) => ({
+              value: Number(item.amount),
+              itemStyle: { color: palette.value[index], borderRadius: [6, 6, 0, 0] },
+            })),
         // 条数多时柱顶标金额会撞在一起，只在不超过 6 条时显示；金额与占比在 tooltip 里始终都有
         label: {
-          show: count <= 6,
+          show: !isEmpty.value && count <= 6,
           position: 'top',
           fontSize: 11,
           color: '#606266',
@@ -114,6 +122,7 @@ function pieOption(): EChartsCoreOption {
   return {
     // 动画一律走 ECharts 默认（1s / cubicInOut）；这里只保证 setOption 之后不再 resize
     tooltip: {
+      show: !isEmpty.value,
       trigger: 'item',
       formatter: (params: unknown) => {
         const p = params as { name: string; value: number; percent: number; marker: string }
@@ -121,6 +130,7 @@ function pieOption(): EChartsCoreOption {
       },
     },
     legend: {
+      show: !isEmpty.value,
       type: 'scroll',
       bottom: 0,
       icon: 'circle',
@@ -141,14 +151,14 @@ function pieOption(): EChartsCoreOption {
         avoidLabelOverlap: true,
         itemStyle: { borderColor: '#fff', borderWidth: 2 },
         label: {
-          show: showSliceLabels.value,
+          show: !isEmpty.value && showSliceLabels.value,
           formatter: '{b}\n{d}%',
           fontSize: 11,
           lineHeight: 14,
           color: '#606266',
         },
         labelLine: {
-          show: showSliceLabels.value,
+          show: !isEmpty.value && showSliceLabels.value,
           length: 8,
           length2: 6,
           smooth: true,
@@ -157,11 +167,14 @@ function pieOption(): EChartsCoreOption {
         // 少量重叠时直接隐藏，不让两个名字贴在一起（官方示例的常规做法）
         labelLayout: { hideOverlap: true },
         emphasis: { scaleSize: 6 },
-        data: props.items.map((item, index) => ({
-          name: item.categoryName,
-          value: Number(item.amount),
-          itemStyle: { color: palette.value[index] },
-        })),
+        // 空数据时给一块浅灰占位（否则整个画布是白的，看起来像图挂了）
+        data: isEmpty.value
+          ? [{ name: '', value: 1, itemStyle: { color: '#f2f3f5' } }]
+          : props.items.map((item, index) => ({
+              name: item.categoryName,
+              value: Number(item.amount),
+              itemStyle: { color: palette.value[index] },
+            })),
       },
     ],
   }
