@@ -260,10 +260,6 @@ onMounted(async () => {
           <span class="nav-icon">⚙️</span><span class="label">设置</span>
         </RouterLink>
       </nav>
-
-      <el-button v-if="onTransactions" class="new-btn" type="primary" @click="openCreate">
-        <span class="nav-icon">＋</span><span class="label">记一笔</span>
-      </el-button>
     </aside>
 
     <div class="main">
@@ -480,11 +476,6 @@ onMounted(async () => {
   font-size: 16px;
 }
 
-.new-btn {
-  margin-top: auto;
-  width: 100%;
-}
-
 /* ---------- 右侧主区 ---------- */
 .main {
   flex: 1;
@@ -691,10 +682,6 @@ onMounted(async () => {
   .nav-item {
     justify-content: center;
     padding: 10px 0;
-  }
-
-  .new-btn {
-    padding: 8px 0;
   }
 
   .content {

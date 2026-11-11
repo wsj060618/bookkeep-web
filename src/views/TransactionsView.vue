@@ -456,6 +456,10 @@ onMounted(() => {
             </el-dropdown-menu>
           </template>
         </el-dropdown>
+        <!-- 手机上用的是右下角浮动按钮，这里只给桌面/平板 -->
+        <el-button v-if="!isMobile && !archived" type="primary" @click="shell.openCreate()">
+          记一笔
+        </el-button>
       </div>
     </section>
 
